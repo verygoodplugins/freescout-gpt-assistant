@@ -1,10 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "FreeScout GPT Assistant",
-  "version": "1.1.0",
-  "description": "Generate AI replies in FreeScout using GPT-4 with customizable documentation support.",
+  "name": "GPT Assistant for FreeScout & Help Scout",
+  "version": "2.0.0",
+  "description": "Generate AI replies in FreeScout and Help Scout using GPT-4 with customizable documentation support.",
   "permissions": ["scripting", "activeTab", "storage"],
-  "host_permissions": ["https://api.openai.com/", "https://*/"],
+  "host_permissions": [
+    "https://api.openai.com/",
+    "https://*/",
+    "*://*.helpscout.net/*",
+    "*://*.helpscout.com/*",
+    "*://secure.helpscout.net/*"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -16,8 +22,35 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*/conversation/*"],
-      "js": ["content.js"]
+      "matches": [
+        "*://*/conversation/*",
+        "*://*/conversations/*",
+        "*://*.helpscout.net/*",
+        "*://secure.helpscout.net/*"
+      ],
+      "js": [
+        "utils/htmlSanitizer.js",
+        "platformDetection.js",
+        "adapters/platformAdapter.js",
+        "adapters/freescoutAdapter.js",
+        "adapters/helpscoutAdapter.js",
+        "platformManager.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "utils/htmlSanitizer.js",
+        "platformDetection.js",
+        "adapters/platformAdapter.js",
+        "adapters/freescoutAdapter.js",
+        "adapters/helpscoutAdapter.js",
+        "platformManager.js"
+      ],
+      "matches": ["<all_urls>"]
     }
   ]
 }

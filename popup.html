@@ -102,7 +102,9 @@
     <input type="password" id="openaiKey" /><br />
     <label>OpenAI Model</label><br />
     <select id="openaiModel">
-      <option value="gpt-4o">GPT-4o (Recommended)</option>
+      <option value="gpt-5">GPT-5 (Recommended)</option>
+      <option value="gpt-5-mini">GPT-5 Mini</option>
+      <option value="gpt-4o">GPT-4o</option>
       <option value="gpt-4-turbo">GPT-4 Turbo</option>
       <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option></select
     ><br />
@@ -142,6 +144,9 @@
       <div class="cache-status" id="cacheStatus">Checking cache status...</div>
       <button type="button" id="clearCache" class="btn-small">
         Clear Documentation Cache
+      </button>
+      <button type="button" id="testFetch" class="btn-small">
+        Test Fetch Docs
       </button>
     </div>
 

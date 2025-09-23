@@ -1,11 +1,11 @@
-# FreeScout GPT Assistant
+# GPT Assistant for FreeScout & Help Scout
 
-A powerful Chrome extension that integrates OpenAI's GPT models with FreeScout to generate intelligent, context-aware customer support responses. Features advanced documentation integration, customer data extraction, and tone matching for personalized support.
+A powerful Chrome extension that integrates OpenAI's GPT models with both FreeScout and Help Scout platforms to generate intelligent, context-aware customer support responses. Features advanced documentation integration, customer data extraction, tone matching, and automatic platform detection for seamless multi-platform support.
 
 ## 🚀 Features
 
 ### Core AI Integration
-- **GPT-4 Support**: Use GPT-4o, GPT-4 Turbo, or GPT-3.5 Turbo models
+- **Multiple Model Support**: GPT-5, GPT-5 Mini, GPT-4o Mini, GPT-4o, GPT-4 Turbo, and GPT-3.5 Turbo
 - **Smart Context Building**: Automatically extracts conversation history and customer information
 - **Tone Matching**: Analyzes your previous responses to maintain consistent communication style
 - **Customizable System Prompts**: Define your support agent's personality and guidelines
@@ -34,12 +34,19 @@ When used with the [WordPressFreeScout module](https://github.com/verygoodplugin
 - **Feedback System**: Optional response quality tracking (can be disabled)
 - **Error Handling**: Detailed error messages for troubleshooting
 
+### Multi-Platform Support
+- **Automatic Platform Detection**: Works seamlessly with both FreeScout and Help Scout
+- **FreeScout Features**: Full WordPress integration, Summernote editor support
+- **Help Scout Features**: React/SPA support, dynamic content handling, appData integration
+- **Security**: Comprehensive HTML sanitization and XSS prevention
+- **Performance**: 5-minute detection caching, debounced operations
+
 ### User Experience
 - **Visual Feedback**: "🤖 Generating AI response..." status indicator
 - **Optional Context Input**: Type context/notes in the reply field before generation
 - **Response Feedback System**: Rate responses and track improvement over time
 - **Markdown Support**: Automatic conversion of links and bold text
-- **Summernote Integration**: Native support for FreeScout's WYSIWYG editor
+- **Editor Integration**: Native support for both platforms' WYSIWYG editors
 - **Personalized Signatures**: Automatic sign-offs using agent names
 
 <img width="1504" alt="image" src="https://github.com/user-attachments/assets/2c64dc3d-bf49-4394-a684-e72252791e88" />
@@ -109,7 +116,7 @@ Based on OpenAI's current pricing (as of 2025) and assuming an average conversat
 
 **Light Usage** (50 responses/month):
 - GPT-4o: ~$0.40/month
-- GPT-4 Turbo: ~$1.45/month  
+- GPT-4 Turbo: ~$1.45/month
 - GPT-3.5 Turbo: ~$0.05/month
 
 **Medium Usage** (200 responses/month):
@@ -138,6 +145,12 @@ Based on OpenAI's current pricing (as of 2025) and assuming an average conversat
    - Check your OpenAI usage dashboard regularly
    - Set up billing alerts in your OpenAI account
    - Track response quality vs. cost for your use case
+
+4. **Leverage Prompt Caching** (Automatic):
+   - The extension automatically implements OpenAI's Prompt Caching
+   - Reduces latency by up to 80% and costs by up to 75%
+   - No configuration needed - works automatically with GPT-4o and newer models
+   - See "Prompt Caching" section below for details
 
 *Note: Prices are subject to change. Check [OpenAI's pricing page](https://openai.com/pricing) for current rates.*
 
@@ -400,6 +413,39 @@ Smart caching reduces API calls and improves performance:
 - Manual cache clearing capability
 - Automatic cache busting for fresh content
 
+### Prompt Caching (OpenAI Feature)
+
+The extension automatically implements OpenAI's Prompt Caching to dramatically improve performance and reduce costs:
+
+**Automatic Benefits:**
+- **Up to 80% faster response times** - Cached prompts are processed much faster
+- **Up to 75% cost reduction** - Cached tokens cost significantly less
+- **No configuration needed** - Works automatically with compatible models
+- **No additional fees** - Prompt caching is free from OpenAI
+
+**How It Works:**
+- Static content (system prompt, documentation) is placed first for optimal caching
+- Dynamic content (conversation, customer info) is placed last
+- A unique cache key routes similar requests to the same servers
+- Cache remains active for 5-10 minutes (up to 1 hour during off-peak)
+
+**Monitoring Performance:**
+Check the browser console for cache metrics:
+```
+GPT Assistant: Prompt caching active! 1920 tokens cached (78.3% hit rate, ~58.7% cost savings)
+```
+
+**Requirements:**
+- Prompts must exceed 1024 tokens for caching to activate
+- Works with GPT-4o and newer models
+- Best results with consistent system prompts and documentation
+
+**Optimization Tips:**
+- Keep your system prompt and documentation URL consistent
+- Make frequent requests to maintain cache warmth
+- Longer, detailed documentation improves cache hit rates
+- Monitor console logs to verify caching is working
+
 ## 🔧 Troubleshooting
 
 ### Common Issues
@@ -424,9 +470,26 @@ Smart caching reduces API calls and improves performance:
 ### Debug Information
 
 Enable Chrome DevTools Console to see detailed logs:
-1. Press F12 in FreeScout
+1. Press F12 in FreeScout or Help Scout
 2. Go to Console tab
 3. Trigger the extension and review any error messages
+
+**Useful debugging commands in console:**
+```javascript
+// Check if extension loaded
+console.log(window.gptAssistant);
+
+// Check detected platform
+window.gptAssistant.platformManager.getPlatform()
+// Should return: 'freescout' or 'helpscout'
+
+// Check health status
+await window.gptAssistant.getHealth()
+// Should show: {status: 'healthy', ...}
+
+// View performance metrics
+window.gptAssistant.getMetrics()
+```
 
 ## 📋 Requirements
 
@@ -458,7 +521,21 @@ This project is open source. Please check the license file for details.
 
 ## 📝 Changelog
 
-### Version 1.1 (Latest)
+### Version 2.0.1 (Latest)
+- ✅ **NEW: Help Scout Support** - Full compatibility with Help Scout platform
+- ✅ **NEW: Prompt Caching** - Automatic OpenAI prompt caching for 80% faster responses and 75% cost reduction
+- ✅ **FIXED: Duplicate Response Bug** - Fixed issue where responses were inserted twice in Help Scout
+- ✅ **IMPROVED: Documentation Parsing** - Better handling of large documentation files
+- Enhanced error handling and debugging capabilities
+- Added comprehensive debug console commands
+
+### Version 2.0.0
+- Major rewrite for multi-platform support
+- Added Help Scout platform detection and integration
+- Improved React/SPA compatibility
+- Enhanced Slate.js editor support
+
+### Version 1.1
 - ✅ **NEW: Optional Context Input** - Type context/notes in the reply field before generating AI responses
 - ✅ **NEW: Response Feedback System** - Rate AI responses with thumbs up/down and provide improvement notes
 - The AI will incorporate your context into the generated response
@@ -467,7 +544,7 @@ This project is open source. Please check the license file for details.
 - Feedback analytics help identify patterns and suggest improvements
 
 ### Version 1.0
-- Initial release with GPT-4 integration
+- Initial release with GPT-4 integration for FreeScout
 - WordPress customer data extraction
 - Documentation integration with llms.txt support
 - Tone matching and personalized signatures
@@ -486,4 +563,4 @@ For issues with the WordPressFreeScout module:
 
 ---
 
-**Made with ❤️ for the FreeScout community** 
+**Made with ❤️ for the FreeScout community**

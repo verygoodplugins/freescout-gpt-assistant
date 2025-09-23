@@ -1,44 +1,101 @@
-async function loadSettings() {
-  return new Promise((resolve) => {
+/**
+ * GPT Assistant for FreeScout & Help Scout
+ * Content script that works with both platforms using platform abstraction
+ */
+
+// Wait for all dependencies to be loaded
+(function() {
+  'use strict';
+
+  // Get global dependencies
+  const platformManager = window.platformManager;
+  const HTMLSanitizer = window.HTMLSanitizer;
+
+// Settings management with retry mechanism
+async function loadSettings(retryCount = 0) {
+  const maxRetries = 3;
+  const retryDelay = 500;
+
+  return new Promise(async (resolve) => {
     try {
+      // Check if chrome.storage is available
+      if (!chrome?.storage?.local) {
+        if (retryCount < maxRetries) {
+          console.log(`Chrome storage not ready, retrying... (${retryCount + 1}/${maxRetries})`);
+          await new Promise(r => setTimeout(r, retryDelay));
+          return resolve(await loadSettings(retryCount + 1));
+        }
+
+        console.warn('Chrome storage API not available after retries, using defaults');
+        resolve({
+          systemPrompt: '',
+          docsUrl: '',
+          openaiKey: '',
+          openaiModel: 'gpt-5',
+          temperature: 1,
+          maxTokens: 1000,
+          keyboardShortcut: 'Ctrl+Shift+G'
+        });
+        return;
+      }
+
       chrome.storage.local.get(['systemPrompt', 'docsUrl', 'openaiKey', 'openaiModel', 'temperature', 'maxTokens', 'keyboardShortcut', 'enableFeedback'], (result) => {
         if (chrome.runtime.lastError) {
           console.error('Extension context error:', chrome.runtime.lastError);
-          resolve({ 
-            systemPrompt: '', 
-            docsUrl: '', 
-            openaiKey: '', 
-            openaiModel: 'gpt-4o', 
-            temperature: 0.7, 
-            maxTokens: 1000, 
-            keyboardShortcut: 'Ctrl+Shift+G' 
+
+          // Retry if we haven't exceeded retry count
+          if (retryCount < maxRetries) {
+            console.log(`Retrying due to runtime error... (${retryCount + 1}/${maxRetries})`);
+            setTimeout(async () => {
+              resolve(await loadSettings(retryCount + 1));
+            }, retryDelay);
+            return;
+          }
+
+          resolve({
+            systemPrompt: '',
+            docsUrl: '',
+            openaiKey: '',
+            openaiModel: 'gpt-5',
+            temperature: 1,
+            maxTokens: 1000,
+            keyboardShortcut: 'Ctrl+Shift+G'
           });
           return;
         }
         resolve({
           ...result,
-          temperature: result.temperature || 0.7,
+          temperature: result.temperature || 1,
           maxTokens: result.maxTokens || 1000
         });
       });
     } catch (error) {
       console.error('Extension context invalidated:', error);
-      resolve({ 
-        systemPrompt: '', 
-        docsUrl: '', 
-        openaiKey: '', 
-        openaiModel: 'gpt-4o', 
-        temperature: 0.7, 
-        maxTokens: 1000, 
-        keyboardShortcut: 'Ctrl+Shift+G' 
+
+      // Retry if we haven't exceeded retry count
+      if (retryCount < maxRetries) {
+        console.log(`Retrying after error... (${retryCount + 1}/${maxRetries})`);
+        await new Promise(r => setTimeout(r, retryDelay));
+        return resolve(await loadSettings(retryCount + 1));
+      }
+
+      resolve({
+        systemPrompt: '',
+        docsUrl: '',
+        openaiKey: '',
+        openaiModel: 'gpt-4o',
+        temperature: 1,
+        maxTokens: 1000,
+        keyboardShortcut: 'Ctrl+Shift+G'
       });
     }
   });
 }
 
+// Documentation loading
 async function loadDocs(url) {
   if (!url) return [];
-  
+
   return new Promise((resolve) => {
     try {
       chrome.runtime.sendMessage(
@@ -64,150 +121,22 @@ async function loadDocs(url) {
   });
 }
 
-function extractThread() {
-  const messages = [];
-  
-  // Find all thread items (messages, notes, etc.)
-  const threadItems = document.querySelectorAll('.thread-item');
-  
-  threadItems.forEach(item => {
-    const content = item.querySelector('.thread-content');
-    const person = item.querySelector('.thread-person');
-    
-    if (!content) return;
-    
-    const messageText = content.innerText.trim();
-    const personName = person ? person.innerText.trim() : 'Unknown';
-    
-    if (item.classList.contains('thread-type-customer')) {
-      messages.push({
-        role: 'user',
-        content: `Customer (${personName}): ${messageText}`
-      });
-    } else if (item.classList.contains('thread-type-message')) {
-      messages.push({
-        role: 'assistant',
-        content: `Agent (${personName}): ${messageText}`
-      });
-    } else if (item.classList.contains('thread-type-note')) {
-      messages.push({
-        role: 'user',
-        content: `Internal Note from ${personName}: ${messageText}`
-      });
-    }
-  });
-  
-  // Fallback to original method if no structured messages found
-  if (messages.length === 0) {
-    const fallbackContent = [...document.querySelectorAll('div.thread-content')]
-      .map(el => el.innerText.trim())
-      .join("\n\n");
-    
-    if (fallbackContent) {
-      messages.push({
-        role: 'user',
-        content: fallbackContent
-      });
-    }
-  }
-  
-  return messages;
-}
-
-function showGeneratingStatus() {
-  const noteEditable = document.querySelector('.note-editable');
-  const textarea = document.querySelector('textarea#body');
-  
-  if (noteEditable) {
-    noteEditable.innerHTML = '<div style="color: #6c757d; font-style: italic;">🤖 Generating AI response...</div>';
-    noteEditable.style.opacity = '0.7';
-  } else if (textarea) {
-    textarea.value = '🤖 Generating AI response...';
-    textarea.style.opacity = '0.7';
-  }
-}
-
-function clearGeneratingStatus() {
-  const noteEditable = document.querySelector('.note-editable');
-  const textarea = document.querySelector('textarea#body');
-  
-  if (noteEditable) {
-    noteEditable.style.opacity = '1';
-  } else if (textarea) {
-    textarea.style.opacity = '1';
-  }
-}
-
-function injectReply(reply) {
-  // Clear any generating status first
-  clearGeneratingStatus();
-  
-  // FreeScout uses Summernote WYSIWYG editor
-  const noteEditable = document.querySelector('.note-editable');
-  const textarea = document.querySelector('textarea#body');
-  
-  if (noteEditable) {
-    // Clear existing content and insert new reply
-    noteEditable.innerHTML = '';
-    
-    // Convert markdown to HTML: links, bold text, and line breaks
-    let htmlReply = reply
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n/g, '<br>');
-    
-    noteEditable.innerHTML = htmlReply;
-    
-    // Trigger input events to notify Summernote of changes
-    noteEditable.dispatchEvent(new Event('input', { bubbles: true }));
-    noteEditable.dispatchEvent(new Event('keyup', { bubbles: true }));
-    
-    // Also update the hidden textarea if it exists (convert HTML back to plain text)
-    if (textarea) {
-      const plainTextReply = reply
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
-        .replace(/\*\*([^*]+)\*\*/g, '$1'); // Remove bold asterisks for plain text
-      textarea.value = plainTextReply;
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-    
-    // Focus the editor
-    noteEditable.focus();
-    
-    console.log('Reply injected into Summernote editor with HTML formatting');
-  } else if (textarea) {
-    // Fallback to textarea if Summernote not found
-    textarea.value = reply;
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    textarea.focus();
-    console.log('Reply injected into textarea fallback');
-  } else {
-    console.error('Could not find reply editor');
-  }
-  
-  // Add feedback UI after successful injection (if enabled)
-  loadSettings().then(settings => {
-    if (settings.enableFeedback !== false) { // Default to true if not set
-      addFeedbackUI(reply);
-    }
-  });
-}
-
+// Feedback UI functions
 function addFeedbackUI(generatedResponse) {
   // Remove any existing feedback UI
   const existingFeedback = document.querySelector('.ai-feedback-container');
   if (existingFeedback) {
     existingFeedback.remove();
   }
-  
+
   // Generate unique ID for this response
   const responseId = 'response_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-  
+
   // Create feedback container
   const feedbackContainer = document.createElement('div');
   feedbackContainer.className = 'ai-feedback-container';
   feedbackContainer.setAttribute('data-response-id', responseId);
-  
+
   feedbackContainer.innerHTML = `
     <div style="
       background: #f8f9fa;
@@ -230,17 +159,17 @@ function addFeedbackUI(generatedResponse) {
           cursor: pointer;
           font-size: 12px;
           transition: all 0.2s;
-                 ">👍 Good</button>
-         <button class="feedback-btn feedback-negative" data-rating="negative" style="
-           background: #dc3545;
-           color: white;
-           border: none;
-           border-radius: 4px;
-           padding: 4px 8px;
-           cursor: pointer;
-           font-size: 12px;
-           transition: all 0.2s;
-         ">👎 Needs Work</button>
+        ">👍 Good</button>
+        <button class="feedback-btn feedback-negative" data-rating="negative" style="
+          background: #dc3545;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          padding: 4px 8px;
+          cursor: pointer;
+          font-size: 12px;
+          transition: all 0.2s;
+        ">👎 Needs Work</button>
       </div>
       <div class="feedback-details" style="display: none;">
         <textarea class="feedback-notes" placeholder="What could be improved? (optional)" style="
@@ -274,32 +203,26 @@ function addFeedbackUI(generatedResponse) {
           font-size: 12px;
         ">Cancel</button>
       </div>
-             <div class="feedback-success" style="display: none; color: #28a745; font-weight: 500;">
-         ✓ Thank you for your feedback!
-       </div>
+      <div class="feedback-success" style="display: none; color: #28a745; font-weight: 500;">
+        ✓ Thank you for your feedback!
+      </div>
     </div>
   `;
-  
-  // Find the best place to insert feedback UI - after the note editor panel
-  const noteEditor = document.querySelector('.note-editor.note-frame.panel');
-  if (noteEditor) {
-    // Insert after the entire note editor panel
-    noteEditor.parentNode.insertBefore(feedbackContainer, noteEditor.nextSibling);
+
+  // Find the best place to insert feedback UI
+  const editor = platformManager.getAdapter()?.getReplyEditor();
+  if (editor && editor.parentElement) {
+    editor.parentElement.appendChild(feedbackContainer);
   } else {
-    // Fallback: try to find textarea and insert after its container
-    const textarea = document.querySelector('textarea#body');
-    if (textarea) {
-      const textareaContainer = textarea.closest('.form-group') || textarea.parentNode;
-      textareaContainer.parentNode.insertBefore(feedbackContainer, textareaContainer.nextSibling);
-    } else {
-      // Final fallback: append to conversation area
-      const conversationArea = document.querySelector('.conversation-body') || document.querySelector('.thread-list');
-      if (conversationArea) {
-        conversationArea.appendChild(feedbackContainer);
-      }
+    // Fallback to conversation area
+    const conversationArea = document.querySelector('.conversation-body') ||
+                            document.querySelector('.thread-list') ||
+                            document.querySelector('.c-conversation-thread');
+    if (conversationArea) {
+      conversationArea.appendChild(feedbackContainer);
     }
   }
-  
+
   // Add event listeners
   setupFeedbackEventListeners(feedbackContainer, responseId, generatedResponse);
 }
@@ -312,22 +235,22 @@ function setupFeedbackEventListeners(container, responseId, generatedResponse) {
   const cancelBtn = container.querySelector('.feedback-cancel');
   const successDiv = container.querySelector('.feedback-success');
   const notesTextarea = container.querySelector('.feedback-notes');
-  
+
   // Handle positive feedback
-  positiveBtn.addEventListener('click', () => {
+  positiveBtn?.addEventListener('click', () => {
     handleFeedbackRating('positive', responseId, generatedResponse, container);
   });
-  
+
   // Handle negative feedback
-  negativeBtn.addEventListener('click', () => {
+  negativeBtn?.addEventListener('click', () => {
     handleFeedbackRating('negative', responseId, generatedResponse, container);
     // Show details form for negative feedback
     detailsDiv.style.display = 'block';
     notesTextarea.focus();
   });
-  
+
   // Handle submit
-  submitBtn.addEventListener('click', () => {
+  submitBtn?.addEventListener('click', () => {
     const notes = notesTextarea.value.trim();
     submitFeedback(responseId, 'negative', notes, generatedResponse);
     detailsDiv.style.display = 'none';
@@ -335,13 +258,13 @@ function setupFeedbackEventListeners(container, responseId, generatedResponse) {
     positiveBtn.style.display = 'none';
     negativeBtn.style.display = 'none';
   });
-  
+
   // Handle cancel
-  cancelBtn.addEventListener('click', () => {
+  cancelBtn?.addEventListener('click', () => {
     detailsDiv.style.display = 'none';
     notesTextarea.value = '';
   });
-  
+
   // Auto-hide after 30 seconds if no interaction
   setTimeout(() => {
     if (container.parentNode && !container.querySelector('.feedback-success').style.display.includes('block')) {
@@ -349,7 +272,7 @@ function setupFeedbackEventListeners(container, responseId, generatedResponse) {
       container.style.transition = 'opacity 0.5s';
     }
   }, 30000);
-  
+
   // Remove after 2 minutes
   setTimeout(() => {
     if (container.parentNode) {
@@ -362,7 +285,7 @@ function handleFeedbackRating(rating, responseId, generatedResponse, container) 
   if (rating === 'positive') {
     // For positive feedback, submit immediately
     submitFeedback(responseId, rating, '', generatedResponse);
-    
+
     // Show success message
     const successDiv = container.querySelector('.feedback-success');
     successDiv.style.display = 'block';
@@ -375,9 +298,10 @@ function handleFeedbackRating(rating, responseId, generatedResponse, container) 
 async function submitFeedback(responseId, rating, notes, generatedResponse) {
   try {
     // Get current context for feedback
-    const threadMessages = extractThread();
-    const customerInfo = extractWordPressCustomerInfo();
-    
+    const threadMessages = await platformManager.extractThread();
+    const customerInfo = await platformManager.extractCustomerInfo();
+    const platform = platformManager.getPlatform();
+
     const feedbackData = {
       id: responseId,
       timestamp: Date.now(),
@@ -385,23 +309,20 @@ async function submitFeedback(responseId, rating, notes, generatedResponse) {
       notes: notes,
       generatedResponse: generatedResponse,
       conversationContext: threadMessages.slice(-3), // Last 3 messages for context
-      customerInfo: customerInfo ? {
-        name: customerInfo.name,
-        version: customerInfo.version,
-        versionStatus: customerInfo.versionStatus
-      } : null,
-      url: window.location.href
+      customerInfo: customerInfo,
+      url: window.location.href,
+      platform: platform
     };
-    
+
     // Store feedback locally
     const storageKey = `feedback_${responseId}`;
     await chrome.storage.local.set({[storageKey]: feedbackData});
-    
+
     console.log('Feedback submitted:', feedbackData);
-    
+
     // Analyze patterns if we have enough feedback
     analyzeFeedbackPatterns();
-    
+
   } catch (error) {
     console.error('Error submitting feedback:', error);
   }
@@ -415,27 +336,27 @@ async function analyzeFeedbackPatterns() {
       .filter(([key]) => key.startsWith('feedback_'))
       .map(([key, value]) => value)
       .sort((a, b) => b.timestamp - a.timestamp); // Most recent first
-    
+
     if (feedbackEntries.length < 5) return; // Need at least 5 feedback entries
-    
+
     // Analyze recent feedback (last 30 days)
     const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
     const recentFeedback = feedbackEntries.filter(f => f.timestamp > thirtyDaysAgo);
-    
+
     if (recentFeedback.length === 0) return;
-    
+
     // Calculate metrics
     const positiveCount = recentFeedback.filter(f => f.rating === 'positive').length;
     const negativeCount = recentFeedback.filter(f => f.rating === 'negative').length;
     const successRate = positiveCount / (positiveCount + negativeCount);
-    
+
     // Extract common issues from negative feedback
     const negativeNotes = recentFeedback
       .filter(f => f.rating === 'negative' && f.notes)
       .map(f => f.notes.toLowerCase());
-    
+
     const commonIssues = extractCommonIssues(negativeNotes);
-    
+
     // Store analysis results
     const analysisData = {
       timestamp: Date.now(),
@@ -444,11 +365,11 @@ async function analyzeFeedbackPatterns() {
       commonIssues: commonIssues,
       suggestions: generateSuggestions(commonIssues, successRate)
     };
-    
+
     await chrome.storage.local.set({feedbackAnalysis: analysisData});
-    
+
     console.log('Feedback analysis updated:', analysisData);
-    
+
   } catch (error) {
     console.error('Error analyzing feedback patterns:', error);
   }
@@ -466,9 +387,9 @@ function extractCommonIssues(negativeNotes) {
     'missing_greeting': ['no greeting', 'abrupt', 'starts too quickly'],
     'missing_signature': ['no signature', 'no sign-off', 'no closing']
   };
-  
+
   const issues = {};
-  
+
   negativeNotes.forEach(note => {
     Object.entries(issuePatterns).forEach(([issue, patterns]) => {
       if (patterns.some(pattern => note.includes(pattern))) {
@@ -476,7 +397,7 @@ function extractCommonIssues(negativeNotes) {
       }
     });
   });
-  
+
   // Return issues sorted by frequency
   return Object.entries(issues)
     .sort(([,a], [,b]) => b - a)
@@ -486,11 +407,11 @@ function extractCommonIssues(negativeNotes) {
 
 function generateSuggestions(commonIssues, successRate) {
   const suggestions = [];
-  
-  if (successRate < 0.7) {
+
+  if (successRate < 1) {
     suggestions.push('Consider reviewing and adjusting your system prompt for better response quality.');
   }
-  
+
   commonIssues.forEach(({issue, count}) => {
     switch(issue) {
       case 'too_formal':
@@ -513,15 +434,16 @@ function generateSuggestions(commonIssues, successRate) {
         break;
     }
   });
-  
+
   return suggestions.slice(0, 3); // Top 3 suggestions
 }
 
+// Keyboard shortcut parsing
 function parseKeyboardShortcut(shortcutString) {
   const defaultShortcut = 'Ctrl+Shift+G';
   const shortcut = shortcutString || defaultShortcut;
   const parts = shortcut.toLowerCase().split('+').map(s => s.trim());
-  
+
   return {
     ctrl: parts.includes('ctrl'),
     meta: parts.includes('cmd') || parts.includes('meta'),
@@ -531,236 +453,55 @@ function parseKeyboardShortcut(shortcutString) {
   };
 }
 
-function getCurrentUserName() {
-  const navUser = document.querySelector('span.nav-user');
-  if (navUser) {
-    return navUser.textContent.trim();
-  }
-  return null;
-}
-
+// Tone analysis for personalization
 function analyzeUserTone(threadMessages, currentUser) {
-  if (!currentUser) return '';
-  
+  if (!currentUser || !threadMessages) return '';
+
   // Find messages from the current user
-  const userMessages = threadMessages.filter(msg => 
-    msg.role === 'assistant' && 
+  const userMessages = threadMessages.filter(msg =>
+    msg.role === 'assistant' &&
     msg.content.includes(`Agent (${currentUser}):`)
   );
-  
+
   if (userMessages.length === 0) return '';
-  
+
   // Extract just the message content without the "Agent (Name):" prefix
-  const userReplies = userMessages.map(msg => 
+  const userReplies = userMessages.map(msg =>
     msg.content.replace(`Agent (${currentUser}): `, '')
   );
-  
+
   if (userReplies.length === 0) return '';
-  
+
   return `\n\nBased on ${currentUser}'s previous responses in this conversation, please match their communication style and tone. Here are their previous replies:\n${userReplies.map((reply, i) => `${i + 1}. ${reply}`).join('\n')}`;
 }
 
-function extractWordPressCustomerInfo() {
-  const wpWidget = document.querySelector('#wordpress-freescout');
-  if (!wpWidget) return null;
-
-  const customerInfo = {};
-
-  try {
-    // Extract customer name and basic info
-    const userLink = wpWidget.querySelector('a[href*="user-edit.php"]');
-    if (userLink) {
-      customerInfo.name = userLink.textContent.trim();
-    }
-
-    // Extract basic customer details from the first list
-    const basicInfoList = wpWidget.querySelector('.wordpress-orders-list');
-    if (basicInfoList) {
-      const listItems = basicInfoList.querySelectorAll('li');
-      listItems.forEach(item => {
-        const label = item.querySelector('label');
-        if (label) {
-          const labelText = label.textContent.trim();
-          const value = item.textContent.replace(labelText, '').trim();
-          
-          switch (labelText) {
-            case 'Registered':
-              customerInfo.registered = value;
-              break;
-            case 'Actve CRM':
-              customerInfo.activeCRM = value;
-              break;
-            case 'Last License Check':
-              customerInfo.lastLicenseCheck = value;
-              break;
-            case 'Version':
-              const versionSpan = item.querySelector('.label');
-              if (versionSpan) {
-                customerInfo.version = versionSpan.textContent.trim();
-                customerInfo.versionStatus = versionSpan.classList.contains('label-danger') ? 'outdated' : 'current';
-              }
-              break;
-          }
-        }
-      });
-    }
-
-    // Extract active integrations
-    const integrationsSection = Array.from(wpWidget.querySelectorAll('h5')).find(h5 => 
-      h5.textContent.includes('Active Integrations')
-    );
-    if (integrationsSection) {
-      const integrationsContainer = integrationsSection.nextElementSibling;
-      if (integrationsContainer && integrationsContainer.classList.contains('label-cloud')) {
-        const integrations = Array.from(integrationsContainer.querySelectorAll('.label')).map(label => 
-          label.textContent.trim()
-        );
-        customerInfo.activeIntegrations = integrations;
-      }
-    }
-
-    // Extract CRM tags
-    const tagsSection = Array.from(wpWidget.querySelectorAll('h5')).find(h5 => 
-      h5.textContent.includes('Tags')
-    );
-    if (tagsSection) {
-      const tagsContainer = tagsSection.nextElementSibling;
-      if (tagsContainer && tagsContainer.classList.contains('label-cloud')) {
-        const tags = Array.from(tagsContainer.querySelectorAll('.label')).map(label => 
-          label.textContent.trim()
-        );
-        customerInfo.crmTags = tags;
-      }
-    }
-
-    // Extract recent orders (limit to 3 most recent)
-    const ordersSection = Array.from(wpWidget.querySelectorAll('h5')).find(h5 => 
-      h5.textContent.includes('EDD Orders')
-    );
-    if (ordersSection) {
-      const ordersList = ordersSection.nextElementSibling;
-      if (ordersList) {
-        const orders = Array.from(ordersList.querySelectorAll('.list-group-item')).slice(0, 3).map(orderItem => {
-          const order = {};
-          
-          // Order status
-          const statusLabel = orderItem.querySelector('.label');
-          if (statusLabel) {
-            order.status = statusLabel.textContent.trim();
-          }
-          
-          // Order number and amount
-          const orderLink = orderItem.querySelector('a[href*="edd-payment-history"]');
-          if (orderLink) {
-            order.number = orderLink.textContent.trim();
-          }
-          
-          // Extract amount (look for $ pattern)
-          const amountMatch = orderItem.textContent.match(/\$[\d,]+\.?\d*/);
-          if (amountMatch) {
-            order.amount = amountMatch[0];
-          }
-          
-          // Product name
-          const productItem = orderItem.querySelector('.edd-order-items-list li');
-          if (productItem) {
-            order.product = productItem.textContent.trim().replace(/\s*-\s*\$[\d,]+\.?\d*/, '');
-          }
-          
-          // Order date
-          const orderMeta = orderItem.querySelector('.edd-order-meta');
-          if (orderMeta) {
-            const dateMatch = orderMeta.textContent.match(/\d{4}-\d{2}-\d{2}/);
-            if (dateMatch) {
-              order.date = dateMatch[0];
-            }
-          }
-          
-          return order;
-        });
-        customerInfo.recentOrders = orders;
-      }
-    }
-
-    // Extract license information
-    const licensesSection = Array.from(wpWidget.querySelectorAll('h5')).find(h5 => 
-      h5.textContent.includes('EDD Licenses')
-    );
-    if (licensesSection) {
-      const licensesList = licensesSection.nextElementSibling;
-      if (licensesList) {
-        const licenseItems = licensesList.querySelectorAll('.list-group-item');
-        if (licenseItems.length > 0) {
-          const license = {};
-          const firstLicense = licenseItems[0];
-          
-          // License status
-          const statusLabel = firstLicense.querySelector('.label');
-          if (statusLabel) {
-            license.status = statusLabel.textContent.trim();
-          }
-          
-          // License number
-          const licenseLink = firstLicense.querySelector('a[href*="edd-licenses"]');
-          if (licenseLink) {
-            license.number = licenseLink.textContent.trim();
-          }
-          
-          // License key
-          const licenseKey = firstLicense.querySelector('code');
-          if (licenseKey) {
-            license.key = licenseKey.textContent.trim();
-          }
-          
-          // Active sites count
-          const sitesList = firstLicense.querySelector('.edd-order-items-list');
-          if (sitesList) {
-            const sites = sitesList.querySelectorAll('li');
-            license.activeSites = sites.length;
-            // Get first few site URLs for context
-            license.sampleSites = Array.from(sites).slice(0, 3).map(site => 
-              site.querySelector('a') ? site.querySelector('a').textContent.trim() : site.textContent.trim()
-            );
-          }
-          
-          // Expiration date
-          const orderMeta = firstLicense.querySelector('.edd-order-meta');
-          if (orderMeta && orderMeta.textContent.includes('Expires')) {
-            const expirationMatch = orderMeta.textContent.match(/Expires (\d{2}\/\d{2}\/\d{4})/);
-            if (expirationMatch) {
-              license.expires = expirationMatch[1];
-            }
-          }
-          
-          customerInfo.license = license;
-        }
-      }
-    }
-
-    return customerInfo;
-  } catch (error) {
-    console.error('Error extracting WordPress customer info:', error);
-    return null;
-  }
-}
-
+// Format customer info for prompt
 function formatCustomerInfoForPrompt(customerInfo) {
   if (!customerInfo) return '';
 
   let customerContext = '\n\n--- CUSTOMER INFORMATION ---\n';
-  
+
+  // Handle both FreeScout and Help Scout formats
   if (customerInfo.name) {
     customerContext += `Customer Name: ${customerInfo.name}\n`;
   }
-  
+
+  if (customerInfo.email) {
+    customerContext += `Email: ${customerInfo.email}\n`;
+  }
+
+  if (customerInfo.company) {
+    customerContext += `Company: ${customerInfo.company}\n`;
+  }
+
   if (customerInfo.registered) {
     customerContext += `Registered: ${customerInfo.registered}\n`;
   }
-  
+
   if (customerInfo.activeCRM) {
     customerContext += `CRM: ${customerInfo.activeCRM}\n`;
   }
-  
+
   if (customerInfo.version) {
     customerContext += `Current Version: ${customerInfo.version}`;
     if (customerInfo.versionStatus === 'outdated') {
@@ -768,19 +509,19 @@ function formatCustomerInfoForPrompt(customerInfo) {
     }
     customerContext += '\n';
   }
-  
+
   if (customerInfo.lastLicenseCheck) {
     customerContext += `Last License Check: ${customerInfo.lastLicenseCheck}\n`;
   }
-  
+
   if (customerInfo.activeIntegrations && customerInfo.activeIntegrations.length > 0) {
     customerContext += `Active Integrations: ${customerInfo.activeIntegrations.join(', ')}\n`;
   }
-  
+
   if (customerInfo.crmTags && customerInfo.crmTags.length > 0) {
     customerContext += `CRM Tags: ${customerInfo.crmTags.join(', ')}\n`;
   }
-  
+
   if (customerInfo.license) {
     customerContext += `\nLicense Information:\n`;
     customerContext += `- Status: ${customerInfo.license.status || 'Unknown'}\n`;
@@ -794,7 +535,7 @@ function formatCustomerInfoForPrompt(customerInfo) {
       customerContext += `- Sample Sites: ${customerInfo.license.sampleSites.join(', ')}\n`;
     }
   }
-  
+
   if (customerInfo.recentOrders && customerInfo.recentOrders.length > 0) {
     customerContext += `\nRecent Orders:\n`;
     customerInfo.recentOrders.forEach((order, index) => {
@@ -808,140 +549,244 @@ function formatCustomerInfoForPrompt(customerInfo) {
       customerContext += '\n';
     });
   }
-  
+
+  // Handle custom properties (Help Scout format)
+  const knownProperties = ['name', 'email', 'company', 'registered', 'activeCRM', 'version', 'versionStatus', 'lastLicenseCheck', 'activeIntegrations', 'crmTags', 'license', 'recentOrders'];
+  const customProperties = Object.keys(customerInfo).filter(key => !knownProperties.includes(key));
+
+  if (customProperties.length > 0) {
+    customerContext += `\nAdditional Information:\n`;
+    customProperties.forEach(key => {
+      const value = customerInfo[key];
+      const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      customerContext += `- ${formattedKey}: ${value}\n`;
+    });
+  }
+
   customerContext += '\nUse this customer information to provide personalized support and relevant recommendations.\n';
-  
+
   return customerContext;
 }
 
+// Extract existing context from editor
 function extractExistingContext() {
-  const noteEditable = document.querySelector('.note-editable');
-  const textarea = document.querySelector('textarea#body');
-  
+  const adapter = platformManager.getAdapter();
+  if (!adapter) return '';
+
+  const editor = adapter.getReplyEditor();
+  if (!editor) return '';
+
   let existingContext = '';
-  
-  if (noteEditable) {
-    // Extract text content from the WYSIWYG editor
-    existingContext = noteEditable.innerText.trim();
-  } else if (textarea) {
+
+  if (editor.contentEditable === 'true') {
+    // Extract text content from contenteditable
+    existingContext = editor.innerText?.trim() || '';
+  } else if (editor.tagName === 'TEXTAREA') {
     // Extract from textarea
-    existingContext = textarea.value.trim();
+    existingContext = editor.value?.trim() || '';
   }
-  
+
   // Only return context if it's not empty and not the generating status message
   if (existingContext && !existingContext.includes('🤖 Generating AI response...')) {
     return existingContext;
   }
-  
+
   return '';
 }
 
-document.addEventListener('keydown', async (e) => {
-  const { systemPrompt, docsUrl, openaiKey, openaiModel, temperature, maxTokens, keyboardShortcut } = await loadSettings();
-  const shortcut = parseKeyboardShortcut(keyboardShortcut);
-  
-  const matchesShortcut = 
-    ((shortcut.ctrl && e.ctrlKey) || (shortcut.meta && e.metaKey)) &&
-    (shortcut.shift === e.shiftKey) &&
-    (shortcut.alt === e.altKey) &&
-    e.key.toUpperCase() === shortcut.key;
+// Main AI generation function
+async function generateAIResponse(e) {
+  const settings = await loadSettings();
+  const { systemPrompt, docsUrl, openaiKey, openaiModel, temperature, maxTokens } = settings;
 
-  if (matchesShortcut) {
+  try {
+    // Validate API key first
+    if (!openaiKey || openaiKey.trim() === '') {
+      await platformManager.injectReply('Error: No OpenAI API key configured. Please set your API key in the extension settings.');
+      return;
+    }
+
+    // Extract any existing context from the editor before showing generating status
+    const existingContext = extractExistingContext();
+
+    // Show generating status
+    await platformManager.showGeneratingStatus();
+
+    // Load documentation
+    const docs = await loadDocs(docsUrl);
+
+    // Debug: Log documentation loading results
+    console.log('GPT Assistant: Documentation loading:', {
+      url: docsUrl,
+      docsLoaded: docs?.length || 0,
+      totalChars: docs?.reduce((sum, doc) => sum + (doc.content?.length || 0), 0) || 0
+    });
+
+    // Extract conversation and user info
+    const threadMessages = await platformManager.extractThread();
+    const currentUser = await platformManager.getCurrentUser();
+    const customerInfo = await platformManager.extractCustomerInfo();
+
+    // Build documentation context from actual content
+    let docsContext = '';
+    if (docs && docs.length > 0) {
+      docsContext = docs.map(doc => {
+        let docText = `## ${doc.title}\n`;
+        if (doc.url) docText += `URL: ${doc.url}\n`;
+        if (doc.content) docText += `${doc.content.trim()}\n`;
+        return docText;
+      }).join('\n---\n');
+    }
+
+    // Build the system message with static content first for optimal caching
+    // STATIC CONTENT (placed first for prompt caching optimization)
+    let systemMessage = systemPrompt || 'You are a helpful customer support agent.';
+
+    // Add documentation context early (static, cacheable content)
+    if (docsContext) {
+      systemMessage += `\n\n--- DOCUMENTATION ---\n${docsContext}`;
+    }
+
+    // Add general instructions (static, cacheable)
+    systemMessage += '\n\n--- INSTRUCTIONS ---\nRespond concisely and helpfully to the customer based on the conversation history.';
+
+    // Add user name instruction if available (semi-static)
+    if (currentUser) {
+      systemMessage += `\n\nYour name is ${currentUser}. End your response with an appropriate brief sign-off using your name (e.g., "Best, ${currentUser}" or "Cheers, ${currentUser}"). Do not include any company signature as it will be automatically appended.`;
+    }
+
+    // DYNAMIC CONTENT (placed last for prompt caching optimization)
+    // Add customer information (changes per customer)
+    const customerContext = formatCustomerInfoForPrompt(customerInfo);
+    if (customerContext) {
+      systemMessage += customerContext;
+    }
+
+    // Add existing context if available (highly dynamic)
+    if (existingContext) {
+      systemMessage += `\n\n--- ADDITIONAL CONTEXT ---\nThe agent has provided the following context/notes to consider when generating the response:\n${existingContext}\n\nPlease incorporate this context appropriately into your response.`;
+    }
+
+    // Analyze and match user's tone from previous messages (dynamic)
+    const toneAnalysis = analyzeUserTone(threadMessages, currentUser);
+    if (toneAnalysis) {
+      systemMessage += toneAnalysis;
+    }
+
+    // Build the messages array
+    const messages = [
+      { role: 'system', content: systemMessage }
+    ];
+
+    // Add all conversation messages (dynamic content)
+    messages.push(...threadMessages);
+
+    // Add a final instruction if we have conversation history
+    if (threadMessages.length > 0) {
+      messages.push({
+        role: 'user',
+        content: 'Please provide a helpful response to continue this conversation.'
+      });
+    }
+
+    // Generate a prompt_cache_key based on static content for better cache routing
+    // Use a combination of model, system prompt hash, and docs URL
+    const generateCacheKey = () => {
+      // Create a simple hash of the system prompt for consistency
+      const promptHash = systemPrompt ?
+        systemPrompt.split('').reduce((a, b) => {
+          a = ((a << 5) - a) + b.charCodeAt(0);
+          return a & a;
+        }, 0).toString(36) : 'default';
+
+      // Include docs URL domain for cache key segmentation
+      let docsDomain = 'nodocs';
+      if (docsUrl) {
+        try {
+          docsDomain = new URL(docsUrl).hostname.replace(/\./g, '-');
+        } catch (e) {
+          // If URL is invalid, use a hash of the URL string
+          docsDomain = 'invalid-' + docsUrl.split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a;
+          }, 0).toString(36);
+        }
+      }
+
+      // Combine into cache key (keep under 64 chars as recommended)
+      const cacheKey = `${openaiModel}-${promptHash}-${docsDomain}`.substring(0, 64);
+      return cacheKey;
+    };
+
+    // Prepare request body with prompt caching optimization
+    const requestBody = {
+      model: openaiModel,
+      messages: messages,
+      temperature: temperature,
+      // Add prompt_cache_key for optimal cache routing
+      prompt_cache_key: generateCacheKey()
+    };
+
+    // GPT-5 Mini uses max_completion_tokens instead of max_tokens
+    if (openaiModel === 'gpt-5-mini' || openaiModel === 'gpt-5') {
+      requestBody.max_completion_tokens = maxTokens;
+    } else {
+      requestBody.max_tokens = maxTokens;
+    }
+
+    // Create an AbortController for timeout
+    const controller = new AbortController();
+    const timeoutMs = 60000; // 60 seconds timeout (increased from default)
+
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+
     try {
-      // Validate API key first
-      if (!openaiKey || openaiKey.trim() === '') {
-        injectReply('Error: No OpenAI API key configured. Please set your API key in the extension settings.');
-        return;
-      }
-      
-      // Extract any existing context from the textarea before showing generating status
-      const existingContext = extractExistingContext();
-      
-      // Show generating status immediately
-      showGeneratingStatus();
-      
-      const docs = await loadDocs(docsUrl);
-      const threadMessages = extractThread();
-      const currentUser = getCurrentUserName();
-      const customerInfo = extractWordPressCustomerInfo();
-      
-      // Build documentation context from actual content
-      let docsContext = '';
-      if (docs && docs.length > 0) {
-        docsContext = docs.map(doc => {
-          let docText = `## ${doc.title}\n`;
-          if (doc.url) docText += `URL: ${doc.url}\n`;
-          if (doc.content) docText += `${doc.content.trim()}\n`;
-          return docText;
-        }).join('\n---\n');
-      }
-
-      // Build the system message
-      let systemMessage = systemPrompt || 'You are a helpful customer support agent.';
-      
-      // Add user name instruction if available
-      if (currentUser) {
-        systemMessage += `\n\nYour name is ${currentUser}. End your response with an appropriate brief sign-off using your name (e.g., "Best, ${currentUser}" or "Cheers, ${currentUser}"). Do not include any company signature as it will be automatically appended.`;
-      }
-      
-      // Add documentation context to system message if available
-      if (docsContext) {
-        systemMessage += `\n\nRelevant documentation:\n${docsContext}`;
-      }
-      
-      // Add customer information if available
-      const customerContext = formatCustomerInfoForPrompt(customerInfo);
-      if (customerContext) {
-        systemMessage += customerContext;
-      }
-      
-      // Add existing context if available
-      if (existingContext) {
-        systemMessage += `\n\n--- ADDITIONAL CONTEXT ---\nThe agent has provided the following context/notes to consider when generating the response:\n${existingContext}\n\nPlease incorporate this context appropriately into your response.`;
-      }
-      
-      // Analyze and match user's tone from previous messages
-      const toneAnalysis = analyzeUserTone(threadMessages, currentUser);
-      if (toneAnalysis) {
-        systemMessage += toneAnalysis;
-      }
-      
-      systemMessage += '\n\nRespond concisely and helpfully to the customer based on the conversation history.';
-
-      // Build the messages array
-      const messages = [
-        { role: 'system', content: systemMessage }
-      ];
-      
-      // Add all conversation messages
-      messages.push(...threadMessages);
-      
-      // Add a final instruction if we have conversation history
-      if (threadMessages.length > 0) {
-        messages.push({
-          role: 'user',
-          content: 'Please provide a helpful response to continue this conversation.'
-        });
-      }
-
+      // Make API call to OpenAI with timeout
       const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${openaiKey.trim()}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          model: openaiModel,
-          messages: messages,
-          temperature: temperature,
-          max_tokens: maxTokens
-        })
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
       });
 
+      clearTimeout(timeout);
+
       const data = await res.json();
-      
+
+      // Log the full API response including cache metrics
+      const cacheMetrics = {
+        cached_tokens: data.usage?.prompt_tokens_details?.cached_tokens || 0,
+        total_prompt_tokens: data.usage?.prompt_tokens || 0,
+        cache_hit_rate: data.usage?.prompt_tokens_details?.cached_tokens ?
+          ((data.usage.prompt_tokens_details.cached_tokens / data.usage.prompt_tokens) * 100).toFixed(1) + '%' : '0%',
+        potential_cost_savings: data.usage?.prompt_tokens_details?.cached_tokens ?
+          ((data.usage.prompt_tokens_details.cached_tokens / data.usage.prompt_tokens) * 0.75 * 100).toFixed(1) + '%' : '0%'
+      };
+
+      console.log('GPT Assistant: API Response:', {
+        status: res.status,
+        model: data.model,
+        usage: data.usage,
+        cache_metrics: cacheMetrics,
+        prompt_cache_key: requestBody.prompt_cache_key,
+        choices: data.choices?.length || 0,
+        content_length: data.choices?.[0]?.message?.content?.length || 0,
+        finish_reason: data.choices?.[0]?.finish_reason
+      });
+
+      // Log cache performance if caching occurred
+      if (cacheMetrics.cached_tokens > 0) {
+        console.log(`GPT Assistant: Prompt caching active! ${cacheMetrics.cached_tokens} tokens cached (${cacheMetrics.cache_hit_rate} hit rate, ~${cacheMetrics.potential_cost_savings} cost savings)`);
+      }
+
       // Check for API errors
       if (!res.ok) {
+        console.error('GPT Assistant: API Error Response:', data);
         let errorMessage = `API Error (${res.status}): `;
         if (data.error) {
           errorMessage += data.error.message || data.error.type || 'Unknown error';
@@ -950,27 +795,192 @@ document.addEventListener('keydown', async (e) => {
         }
         throw new Error(errorMessage);
       }
-      
+
       const reply = data.choices?.[0]?.message?.content;
       if (!reply) {
-        throw new Error('No response content received from OpenAI API');
+        // Don't throw error for empty response, just log and show gentle message
+        console.warn('GPT Assistant: Empty response received from OpenAI API');
+        await platformManager.clearGeneratingStatus();
+
+        const message = 'The AI generated an empty response. This might happen if:\n' +
+                       '• The conversation context is unclear\n' +
+                       '• The request is too complex\n' +
+                       '• There was a temporary API issue\n\n' +
+                       'Please try rephrasing your request or providing more context.';
+        await platformManager.injectReply(message);
+        return;
       }
-      
-      injectReply(reply);
-    } catch (error) {
-      console.error('Error generating response:', error);
-      clearGeneratingStatus();
-      
-      // Provide detailed error message to help with troubleshooting
-      let errorMessage = 'Error generating AI response: ';
-      if (error.message) {
-        errorMessage += error.message;
-      } else {
-        errorMessage += 'Unknown error occurred';
+
+      // Clear the generating status first
+      await platformManager.clearGeneratingStatus();
+
+      // Inject the reply
+      await platformManager.injectReply(reply);
+
+      // Add feedback UI if enabled
+      if (settings.enableFeedback !== false) {
+        addFeedbackUI(reply);
       }
-      errorMessage += '\n\nPlease check your settings and try again.';
-      
-      injectReply(errorMessage);
+
+    } catch (abortError) {
+      // Handle timeout separately
+      if (abortError.name === 'AbortError') {
+        console.error('GPT Assistant: Request timed out after 60 seconds');
+        await platformManager.clearGeneratingStatus();
+
+        const timeoutMessage = 'The request timed out after 60 seconds. This might be due to:\n' +
+                               '• OpenAI service being slow or unavailable\n' +
+                               '• Network connectivity issues\n' +
+                               '• Very long conversation context\n\n' +
+                               'Please try again or reduce the conversation length.';
+        await platformManager.injectReply(timeoutMessage);
+        return;
+      }
+
+      // Re-throw for other errors
+      throw abortError;
+    }
+
+  } catch (error) {
+    console.error('GPT Assistant: Error generating response:', error);
+    await platformManager.clearGeneratingStatus();
+
+    // Handle different types of errors more gracefully
+    let userMessage = '';
+
+    if (error.message?.includes('Failed to fetch')) {
+      // Network errors
+      userMessage = 'Network error: Unable to reach OpenAI API.\n\n' +
+                   'Please check your internet connection and try again.';
+    } else if (error.message?.includes('401')) {
+      // Authentication error
+      userMessage = 'Authentication failed. Please check your OpenAI API key in the extension settings.';
+    } else if (error.message?.includes('429')) {
+      // Rate limit error
+      userMessage = 'Rate limit exceeded. Please wait a moment and try again.';
+    } else if (error.message?.includes('API Error')) {
+      // API errors - show the actual error
+      userMessage = error.message.replace('Error generating AI response: ', '');
+    } else {
+      // Generic error - but don't show technical details
+      userMessage = 'Unable to generate AI response at this time.\n\n' +
+                   'Please try again in a moment. If the issue persists, check:\n' +
+                   '• Your OpenAI API key in settings\n' +
+                   '• Your internet connection\n' +
+                   '• OpenAI service status';
+    }
+
+    // Only inject error message if we have one
+    if (userMessage) {
+      await platformManager.injectReply(userMessage);
     }
   }
-});
+}
+
+// Keyboard shortcut handler
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', async (e) => {
+    const settings = await loadSettings();
+    const shortcut = parseKeyboardShortcut(settings.keyboardShortcut);
+
+    const matchesShortcut =
+      ((shortcut.ctrl && e.ctrlKey) || (shortcut.meta && e.metaKey)) &&
+      (shortcut.shift === e.shiftKey) &&
+      (shortcut.alt === e.altKey) &&
+      e.key.toUpperCase() === shortcut.key;
+
+    if (matchesShortcut) {
+      e.preventDefault();
+      await generateAIResponse(e);
+    }
+  });
+}
+
+// Initialize extension
+async function initializeExtension() {
+  console.log('GPT Assistant: Starting initialization...');
+
+  // Wait a bit for Chrome APIs to be available
+  let apiCheckAttempts = 0;
+  const maxApiChecks = 5;
+  const apiCheckDelay = 200;
+
+  while (!chrome?.runtime?.id && apiCheckAttempts < maxApiChecks) {
+    console.log(`Waiting for Chrome APIs... (${apiCheckAttempts + 1}/${maxApiChecks})`);
+    await new Promise(resolve => setTimeout(resolve, apiCheckDelay));
+    apiCheckAttempts++;
+  }
+
+  if (!chrome?.runtime?.id) {
+    console.warn('GPT Assistant: Chrome APIs not available, running in limited mode');
+  } else {
+    console.log('GPT Assistant: Chrome APIs available');
+  }
+
+  // Initialize platform manager
+  const initialized = await platformManager.initialize();
+
+  if (!initialized) {
+    console.log('GPT Assistant: Platform not supported on this page');
+    return;
+  }
+
+  const platform = platformManager.getPlatform();
+  console.log(`GPT Assistant: Successfully initialized for ${platform}`);
+
+  // Setup keyboard shortcuts
+  setupKeyboardShortcuts();
+
+  // Setup platform-specific event listeners
+  platformManager.addEventListener('error', (data) => {
+    console.error('GPT Assistant Error:', data);
+  });
+
+  platformManager.addEventListener('editorReady', async () => {
+    console.log('GPT Assistant: Editor ready');
+  });
+
+  // Perform health check
+  const health = await platformManager.healthCheck();
+  console.log('GPT Assistant Health Check:', health);
+
+  // Show ready notification
+  const adapter = platformManager.getAdapter();
+  if (adapter && adapter.showNotification) {
+    adapter.showNotification('GPT Assistant ready', 'success');
+  }
+}
+
+// Handle page navigation (for SPAs)
+let lastUrl = location.href;
+new MutationObserver(() => {
+  const url = location.href;
+  if (url !== lastUrl) {
+    lastUrl = url;
+    console.log('GPT Assistant: Page navigation detected, resetting...');
+    platformManager.reset().then(() => {
+      console.log('GPT Assistant: Reset complete');
+    });
+  }
+}).observe(document, { subtree: true, childList: true });
+
+// Initialize when DOM is ready with a small delay for extension context
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    // Small delay to ensure extension context is ready
+    setTimeout(initializeExtension, 100);
+  });
+} else {
+  // If DOM is already loaded, still add a small delay
+  setTimeout(initializeExtension, 100);
+}
+
+  // Export for debugging
+  window.gptAssistant = {
+    platformManager,
+    generateAIResponse,
+    getHealth: () => platformManager.healthCheck(),
+    getMetrics: () => platformManager.getMetrics(),
+    reset: () => platformManager.reset()
+  };
+})();
