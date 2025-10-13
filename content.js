@@ -12,6 +12,15 @@
   const platformManager = window.platformManager;
   const HTMLSanitizer = window.HTMLSanitizer;
 
+// Check if extension context is valid
+function isExtensionContextValid() {
+  try {
+    return !!(chrome && chrome.runtime && chrome.runtime.id);
+  } catch (e) {
+    return false;
+  }
+}
+
 // Settings management with retry mechanism
 async function loadSettings(retryCount = 0) {
   const maxRetries = 3;
@@ -19,15 +28,18 @@ async function loadSettings(retryCount = 0) {
 
   return new Promise(async (resolve) => {
     try {
-      // Check if chrome.storage is available
-      if (!chrome?.storage?.local) {
+      // Check if extension context is valid
+      if (!isExtensionContextValid()) {
+        if (retryCount === 0) {
+          console.warn('GPT Assistant: Extension context is invalid. The extension may have been reloaded. Please refresh the page.');
+        }
+        
         if (retryCount < maxRetries) {
-          console.log(`Chrome storage not ready, retrying... (${retryCount + 1}/${maxRetries})`);
           await new Promise(r => setTimeout(r, retryDelay));
           return resolve(await loadSettings(retryCount + 1));
         }
 
-        console.warn('Chrome storage API not available after retries, using defaults');
+        // After retries, return defaults
         resolve({
           systemPrompt: '',
           docsUrl: '',
@@ -45,11 +57,10 @@ async function loadSettings(retryCount = 0) {
         'gpt5ReasoningEffort', 'gpt5TextVerbosity', 'gpt5MaxOutputTokens', 'gpt5ServiceTier', 'gpt5ParallelToolCalls'
       ], (result) => {
         if (chrome.runtime.lastError) {
-          console.error('Extension context error:', chrome.runtime.lastError);
+          console.warn('GPT Assistant: Runtime error loading settings:', chrome.runtime.lastError.message);
 
           // Retry if we haven't exceeded retry count
           if (retryCount < maxRetries) {
-            console.log(`Retrying due to runtime error... (${retryCount + 1}/${maxRetries})`);
             setTimeout(async () => {
               resolve(await loadSettings(retryCount + 1));
             }, retryDelay);
@@ -74,11 +85,10 @@ async function loadSettings(retryCount = 0) {
         });
       });
     } catch (error) {
-      console.error('Extension context invalidated:', error);
+      console.warn('GPT Assistant: Error loading settings:', error.message);
 
       // Retry if we haven't exceeded retry count
       if (retryCount < maxRetries) {
-        console.log(`Retrying after error... (${retryCount + 1}/${maxRetries})`);
         await new Promise(r => setTimeout(r, retryDelay));
         return resolve(await loadSettings(retryCount + 1));
       }
@@ -100,26 +110,32 @@ async function loadSettings(retryCount = 0) {
 async function loadDocs(url) {
   if (!url) return [];
 
+  // Check if extension context is valid
+  if (!isExtensionContextValid()) {
+    console.warn('GPT Assistant: Cannot load docs, extension context is invalid');
+    return [];
+  }
+
   return new Promise((resolve) => {
     try {
       chrome.runtime.sendMessage(
         { action: 'fetchDocs', url },
         (response) => {
           if (chrome.runtime.lastError) {
-            console.error('Extension context error in loadDocs:', chrome.runtime.lastError);
+            console.warn('GPT Assistant: Error loading docs:', chrome.runtime.lastError.message);
             resolve([]);
             return;
           }
           if (response && response.success) {
             resolve(response.docs);
           } else {
-            console.error('Error loading docs:', response?.error);
+            console.warn('GPT Assistant: Failed to load docs:', response?.error);
             resolve([]);
           }
         }
       );
     } catch (error) {
-      console.error('Extension context invalidated in loadDocs:', error);
+      console.warn('GPT Assistant: Exception loading docs:', error.message);
       resolve([]);
     }
   });
@@ -301,6 +317,12 @@ function handleFeedbackRating(rating, responseId, generatedResponse, container) 
 
 async function submitFeedback(responseId, rating, notes, generatedResponse) {
   try {
+    // Check if extension context is valid
+    if (!isExtensionContextValid()) {
+      console.warn('GPT Assistant: Cannot submit feedback, extension context is invalid');
+      return;
+    }
+
     // Get current context for feedback
     const threadMessages = await platformManager.extractThread();
     const customerInfo = await platformManager.extractCustomerInfo();
@@ -328,12 +350,18 @@ async function submitFeedback(responseId, rating, notes, generatedResponse) {
     analyzeFeedbackPatterns();
 
   } catch (error) {
-    console.error('Error submitting feedback:', error);
+    console.warn('GPT Assistant: Error submitting feedback:', error.message);
   }
 }
 
 async function analyzeFeedbackPatterns() {
   try {
+    // Check if extension context is valid
+    if (!isExtensionContextValid()) {
+      console.warn('GPT Assistant: Cannot analyze feedback, extension context is invalid');
+      return;
+    }
+
     // Get all feedback data
     const allData = await chrome.storage.local.get(null);
     const feedbackEntries = Object.entries(allData)
@@ -375,7 +403,7 @@ async function analyzeFeedbackPatterns() {
     console.log('Feedback analysis updated:', analysisData);
 
   } catch (error) {
-    console.error('Error analyzing feedback patterns:', error);
+    console.warn('GPT Assistant: Error analyzing feedback patterns:', error.message);
   }
 }
 
@@ -600,6 +628,16 @@ function extractExistingContext() {
 
 // Main AI generation function
 async function generateAIResponse(e) {
+  // Check if extension context is valid before proceeding
+  if (!isExtensionContextValid()) {
+    console.error('GPT Assistant: Extension context is invalid. Please refresh the page.');
+    const adapter = platformManager?.getAdapter();
+    if (adapter && adapter.showNotification) {
+      adapter.showNotification('Extension was reloaded. Please refresh this page.', 'error');
+    }
+    return;
+  }
+
   const settings = await loadSettings();
   const { systemPrompt, docsUrl, openaiKey, openaiModel, temperature, maxTokens,
           gpt5ReasoningEffort, gpt5TextVerbosity, gpt5MaxOutputTokens, gpt5ServiceTier, gpt5ParallelToolCalls } = settings;
@@ -937,17 +975,18 @@ async function initializeExtension() {
   const maxApiChecks = 5;
   const apiCheckDelay = 200;
 
-  while (!chrome?.runtime?.id && apiCheckAttempts < maxApiChecks) {
-    console.log(`Waiting for Chrome APIs... (${apiCheckAttempts + 1}/${maxApiChecks})`);
+  while (!isExtensionContextValid() && apiCheckAttempts < maxApiChecks) {
+    console.log(`GPT Assistant: Waiting for extension context... (${apiCheckAttempts + 1}/${maxApiChecks})`);
     await new Promise(resolve => setTimeout(resolve, apiCheckDelay));
     apiCheckAttempts++;
   }
 
-  if (!chrome?.runtime?.id) {
-    console.warn('GPT Assistant: Chrome APIs not available, running in limited mode');
-  } else {
-    console.log('GPT Assistant: Chrome APIs available');
+  if (!isExtensionContextValid()) {
+    console.error('GPT Assistant: Extension context is not available. The extension may need to be reloaded or the page refreshed.');
+    return;
   }
+
+  console.log('GPT Assistant: Extension context is valid');
 
   // Initialize platform manager
   const initialized = await platformManager.initialize();
