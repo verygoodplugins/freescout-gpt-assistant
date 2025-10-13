@@ -14,25 +14,35 @@ Guidelines:
 When referencing documentation, format links as: [Link Text](URL)`;
 
 // Load saved settings when popup opens
-chrome.storage.local.get(['systemPrompt', 'docsUrl', 'openaiKey', 'openaiModel', 'temperature', 'maxTokens', 'keyboardShortcut', 'enableFeedback'], (result) => {
+chrome.storage.local.get([
+  'systemPrompt', 'docsUrl', 'openaiKey', 'openaiModel',
+  'temperature', 'maxTokens', 'keyboardShortcut', 'enableFeedback',
+  'gpt5ReasoningEffort', 'gpt5TextVerbosity', 'gpt5MaxOutputTokens',
+  'gpt5ServiceTier', 'gpt5ParallelToolCalls'
+], (result) => {
   document.getElementById('systemPrompt').value = result.systemPrompt || DEFAULT_SYSTEM_PROMPT;
   document.getElementById('docsUrl').value = result.docsUrl || '';
   document.getElementById('openaiKey').value = result.openaiKey || '';
   document.getElementById('openaiModel').value = result.openaiModel || 'gpt-5';
-  document.getElementById('temperature').value = result.temperature || 1;
+  document.getElementById('temperature').value = result.temperature || 0.7;
   document.getElementById('maxTokens').value = result.maxTokens || 1000;
   document.getElementById('keyboardShortcut').value = result.keyboardShortcut || 'Ctrl+Shift+G';
   document.getElementById('enableFeedback').checked = result.enableFeedback !== false; // Default to true
-
+  
+  // GPT-5 defaults
+  (document.getElementById('gpt5ReasoningEffort') || {}).value = result.gpt5ReasoningEffort || 'high';
+  (document.getElementById('gpt5TextVerbosity') || {}).value = result.gpt5TextVerbosity || 'medium';
+  const mo = (typeof result.gpt5MaxOutputTokens === 'number') ? result.gpt5MaxOutputTokens : '';
+  if (document.getElementById('gpt5MaxOutputTokens')) document.getElementById('gpt5MaxOutputTokens').value = mo;
+  (document.getElementById('gpt5ServiceTier') || {}).value = (typeof result.gpt5ServiceTier === 'string') ? result.gpt5ServiceTier : '';
+  if (document.getElementById('gpt5ParallelToolCalls')) document.getElementById('gpt5ParallelToolCalls').checked = result.gpt5ParallelToolCalls !== false;
+  
   // Check cache status after loading settings
   checkCacheStatus(result.docsUrl);
 
   // Load feedback analytics (only if feedback is enabled)
   if (result.enableFeedback !== false) {
     loadFeedbackAnalytics();
-  } else {
-    // Hide feedback section if disabled
-    document.querySelector('.feedback-section').style.display = 'none';
   }
 });
 
@@ -45,16 +55,7 @@ document.getElementById('systemPrompt').addEventListener('blur', function() {
   }
 });
 
-// Toggle feedback section visibility when checkbox changes
-document.getElementById('enableFeedback').addEventListener('change', function() {
-  const feedbackSection = document.querySelector('.feedback-section');
-  if (this.checked) {
-    feedbackSection.style.display = 'block';
-    loadFeedbackAnalytics();
-  } else {
-    feedbackSection.style.display = 'none';
-  }
-});
+// Feedback removed
 
 // Check cache status for the docs URL
 function checkCacheStatus(docsUrl) {
@@ -90,6 +91,22 @@ function checkCacheStatus(docsUrl) {
 // Load and display feedback analytics
 async function loadFeedbackAnalytics() {
   try {
+    // Check if feedback elements exist in the HTML
+    const statsElement = document.getElementById('feedbackStats');
+    const suggestionsElement = document.getElementById('feedbackSuggestions');
+    const suggestionsList = document.getElementById('suggestionsList');
+    
+    // Verify all required elements exist before proceeding
+    const missingElements = [];
+    if (!statsElement) missingElements.push('feedbackStats');
+    if (!suggestionsElement) missingElements.push('feedbackSuggestions');
+    if (!suggestionsList) missingElements.push('suggestionsList');
+    
+    if (missingElements.length > 0) {
+      console.log(`GPT Assistant: Missing feedback elements in HTML (${missingElements.join(', ')}), skipping analytics`);
+      return;
+    }
+    
     const allData = await new Promise(resolve => {
       chrome.storage.local.get(null, resolve);
     });
@@ -99,10 +116,6 @@ async function loadFeedbackAnalytics() {
       .filter(([key]) => key.startsWith('feedback_'))
       .map(([key, value]) => value)
       .sort((a, b) => b.timestamp - a.timestamp);
-
-    const statsElement = document.getElementById('feedbackStats');
-    const suggestionsElement = document.getElementById('feedbackSuggestions');
-    const suggestionsList = document.getElementById('suggestionsList');
 
     if (feedbackEntries.length === 0) {
       statsElement.innerHTML = '<div class="feedback-stat"><span>No feedback data yet</span></div>';
@@ -153,13 +166,17 @@ async function loadFeedbackAnalytics() {
 
   } catch (error) {
     console.error('Error loading feedback analytics:', error);
-    document.getElementById('feedbackStats').innerHTML =
-      '<div class="feedback-stat"><span>Error loading feedback data</span></div>';
+    const statsElement = document.getElementById('feedbackStats');
+    if (statsElement) {
+      statsElement.innerHTML = '<div class="feedback-stat"><span>Error loading feedback data</span></div>';
+    }
   }
 }
 
 // View feedback data in a new tab
-document.getElementById('viewFeedback').addEventListener('click', async () => {
+const viewFeedbackBtn = document.getElementById('viewFeedback');
+if (viewFeedbackBtn) {
+  viewFeedbackBtn.addEventListener('click', async () => {
   try {
     const allData = await new Promise(resolve => {
       chrome.storage.local.get(null, resolve);
@@ -184,7 +201,8 @@ document.getElementById('viewFeedback').addEventListener('click', async () => {
     console.error('Error viewing feedback:', error);
     alert('Error loading feedback data');
   }
-});
+  });
+}
 
 // Generate HTML report for feedback data
 function generateFeedbackReportHTML(feedbackEntries, analysisData) {
@@ -326,7 +344,9 @@ function generateFeedbackReportHTML(feedbackEntries, analysisData) {
 }
 
 // Clear old feedback (30 days)
-document.getElementById('clearOld30').addEventListener('click', async () => {
+const clearOld30Btn = document.getElementById('clearOld30');
+if (clearOld30Btn) {
+  clearOld30Btn.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear feedback entries older than 30 days?')) {
     try {
       const response = await new Promise(resolve => {
@@ -347,10 +367,13 @@ document.getElementById('clearOld30').addEventListener('click', async () => {
       alert('Error clearing old feedback entries.');
     }
   }
-});
+  });
+}
 
 // Clear old feedback (90 days)
-document.getElementById('clearOld90').addEventListener('click', async () => {
+const clearOld90Btn = document.getElementById('clearOld90');
+if (clearOld90Btn) {
+  clearOld90Btn.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear feedback entries older than 90 days?')) {
     try {
       const response = await new Promise(resolve => {
@@ -371,10 +394,13 @@ document.getElementById('clearOld90').addEventListener('click', async () => {
       alert('Error clearing old feedback entries.');
     }
   }
-});
+  });
+}
 
 // Clear negative feedback
-document.getElementById('clearNegative').addEventListener('click', async () => {
+const clearNegativeBtn = document.getElementById('clearNegative');
+if (clearNegativeBtn) {
+  clearNegativeBtn.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear all negative feedback entries?')) {
     try {
       const response = await new Promise(resolve => {
@@ -394,10 +420,13 @@ document.getElementById('clearNegative').addEventListener('click', async () => {
       alert('Error clearing negative feedback entries.');
     }
   }
-});
+  });
+}
 
 // Clear all feedback data
-document.getElementById('clearFeedback').addEventListener('click', async () => {
+const clearFeedbackBtn = document.getElementById('clearFeedback');
+if (clearFeedbackBtn) {
+  clearFeedbackBtn.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear all feedback data? This cannot be undone.')) {
     try {
       const allData = await new Promise(resolve => {
@@ -426,7 +455,8 @@ document.getElementById('clearFeedback').addEventListener('click', async () => {
       alert('Error clearing feedback data.');
     }
   }
-});
+  });
+}
 
 // Clear cache button handler
 document.getElementById('clearCache').onclick = () => {
@@ -511,8 +541,24 @@ document.getElementById('save').onclick = () => {
   const maxTokens = parseInt(document.getElementById('maxTokens').value) || 1000;
   const keyboardShortcut = document.getElementById('keyboardShortcut').value || 'Ctrl+Shift+G';
   const enableFeedback = document.getElementById('enableFeedback').checked;
+  
+  // GPT-5 tuning
+  const gpt5ReasoningEffort = document.getElementById('gpt5ReasoningEffort')?.value || 'high';
+  const gpt5TextVerbosity = document.getElementById('gpt5TextVerbosity')?.value || 'medium';
+  const gpt5MaxOutputTokensRaw = document.getElementById('gpt5MaxOutputTokens')?.value || '';
+  const gpt5MaxOutputTokens = gpt5MaxOutputTokensRaw === '' ? null : parseInt(gpt5MaxOutputTokensRaw, 10);
+  const gpt5ServiceTier = document.getElementById('gpt5ServiceTier')?.value || '';
+  const gpt5ParallelToolCalls = document.getElementById('gpt5ParallelToolCalls')?.checked !== false;
 
-  chrome.storage.local.set({ systemPrompt, docsUrl, openaiKey, openaiModel, temperature, maxTokens, keyboardShortcut, enableFeedback }, () => {
+  chrome.storage.local.set({
+    systemPrompt, docsUrl, openaiKey, openaiModel, temperature, maxTokens, keyboardShortcut, enableFeedback,
+    gpt5ReasoningEffort, gpt5TextVerbosity, gpt5MaxOutputTokens, gpt5ServiceTier, gpt5ParallelToolCalls
+  }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('GPT Assistant: Error saving settings:', chrome.runtime.lastError);
+      alert('Error saving settings: ' + chrome.runtime.lastError.message);
+      return;
+    }
     // Clear docs cache when settings are saved
     chrome.runtime.sendMessage({ action: 'clearDocsCache' }, (response) => {
       if (response && response.success) {

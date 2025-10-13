@@ -5,10 +5,13 @@ A powerful Chrome extension that integrates OpenAI's GPT models with both FreeSc
 ## 🚀 Features
 
 ### Core AI Integration
-- **Multiple Model Support**: GPT-5, GPT-5 Mini, GPT-4o Mini, GPT-4o, GPT-4 Turbo, and GPT-3.5 Turbo
+- **GPT-5 Support**: Latest GPT-5 family (GPT-5, GPT-5 Mini, GPT-5 Nano) - supports both Responses API and Chat Completions API
+- **GPT-4 Support**: Also supports GPT-4o, GPT-4 Turbo, and GPT-3.5 Turbo models
 - **Smart Context Building**: Automatically extracts conversation history and customer information
 - **Tone Matching**: Analyzes your previous responses to maintain consistent communication style
 - **Customizable System Prompts**: Define your support agent's personality and guidelines
+- **Fast Responses**: Optimized prompts and context handling for quick replies
+- **Optimized for Speed**: GPT-5 models configured with low reasoning effort and verbosity for quick responses
 
 ### Documentation Integration
 - **llms.txt Support**: Automatically fetch and include relevant documentation in AI responses
@@ -31,7 +34,7 @@ When used with the [WordPressFreeScout module](https://github.com/verygoodplugin
 - **Token Limits**: Control response length and API costs (50-4000 tokens)
 - **Custom Shortcuts**: Configurable keyboard shortcuts (default: Ctrl+Shift+G)
 - **Model Selection**: Choose the best OpenAI model for your needs
-- **Feedback System**: Optional response quality tracking (can be disabled)
+ 
 - **Error Handling**: Detailed error messages for troubleshooting
 
 ### Multi-Platform Support
@@ -44,7 +47,7 @@ When used with the [WordPressFreeScout module](https://github.com/verygoodplugin
 ### User Experience
 - **Visual Feedback**: "🤖 Generating AI response..." status indicator
 - **Optional Context Input**: Type context/notes in the reply field before generation
-- **Response Feedback System**: Rate responses and track improvement over time
+ 
 - **Markdown Support**: Automatic conversion of links and bold text
 - **Editor Integration**: Native support for both platforms' WYSIWYG editors
 - **Personalized Signatures**: Automatic sign-offs using agent names
@@ -75,7 +78,7 @@ When used with the [WordPressFreeScout module](https://github.com/verygoodplugin
 1. **Click the extension icon** in your Chrome toolbar
 2. **Configure required settings**:
    - **OpenAI API Key**: Your API key from OpenAI
-   - **OpenAI Model**: Choose GPT-4o (recommended), GPT-4 Turbo, or GPT-3.5 Turbo
+   - **OpenAI Model**: Choose from GPT-5 (latest, fast), GPT-5 Mini, GPT-5 Nano, GPT-4o, GPT-4 Turbo, or GPT-3.5 Turbo
    - **System Prompt**: Customize the AI's behavior and tone
    - **Keyboard Shortcut**: Default is Ctrl+Shift+G (Cmd+Shift+G on Mac)
 
@@ -85,11 +88,13 @@ When used with the [WordPressFreeScout module](https://github.com/verygoodplugin
   - `0.1` = Very consistent, predictable responses
   - `0.7` = Balanced (default)
   - `0.9` = More creative, varied responses
+  - Note: For GPT-5 via the Responses API, this setting is ignored.
 
 - **Max Tokens**: Control response length (50-4000)
   - `500` = Short responses
   - `1000` = Medium responses (default)
   - `2000+` = Longer, detailed responses
+  - Note: For GPT-5 via the Responses API, `max_output_tokens` is the total token budget that includes both hidden reasoning tokens and visible output. The extension therefore overrides the legacy `max_tokens` setting to avoid truncating combined reasoning+output, which can suppress visible text. Legacy models (GPT-4, GPT-3.5) still use the `max_tokens` setting.
 
 - **Enable Feedback System**: Toggle response quality tracking
   - `Checked` = Show thumbs up/down buttons after responses (default)
@@ -108,33 +113,50 @@ Based on OpenAI's current pricing (as of 2025) and assuming an average conversat
 
 | Model | Input Cost | Output Cost | Total Cost per Response |
 |-------|------------|-------------|------------------------|
-| **GPT-4o** | $0.0025 per 1K tokens | $0.01 per 1K tokens | **~$0.008** |
+| **GPT-5** | $0.00125 per 1K tokens | $0.01 per 1K tokens | **~$0.0055** |
+| **GPT-5 Mini** | $0.00025 per 1K tokens | $0.002 per 1K tokens | **~$0.0011** |
+| **GPT-5 Nano** | $0.00005 per 1K tokens | $0.00040 per 1K tokens | **~$0.00022** |
+| **GPT-4o** | $0.005 per 1K tokens | $0.02 per 1K tokens | **~$0.016** |
 | **GPT-4 Turbo** | $0.01 per 1K tokens | $0.03 per 1K tokens | **~$0.029** |
-| **GPT-3.5 Turbo** | $0.0005 per 1K tokens | $0.0015 per 1K tokens | **~$0.001** |
+| **GPT-3.5 Turbo** | $0.0005 per 1K tokens | $0.0015 per 1K tokens | **~$0.00145** |
+
+*Total cost calculated based on 2,000 input tokens + 300 output tokens per response.*
 
 ### Monthly Cost Examples
 
 **Light Usage** (50 responses/month):
-- GPT-4o: ~$0.40/month
+- GPT-5: ~$0.28/month
+- GPT-5 Mini: ~$0.06/month
+- GPT-5 Nano: ~$0.01/month
+- GPT-4o: ~$0.80/month
 - GPT-4 Turbo: ~$1.45/month
-- GPT-3.5 Turbo: ~$0.05/month
+- GPT-3.5 Turbo: ~$0.07/month
 
 **Medium Usage** (200 responses/month):
-- GPT-4o: ~$1.60/month
+- GPT-5: ~$1.10/month
+- GPT-5 Mini: ~$0.22/month
+- GPT-5 Nano: ~$0.04/month
+- GPT-4o: ~$3.20/month
 - GPT-4 Turbo: ~$5.80/month
-- GPT-3.5 Turbo: ~$0.20/month
+- GPT-3.5 Turbo: ~$0.29/month
 
 **Heavy Usage** (500 responses/month):
-- GPT-4o: ~$4.00/month
+- GPT-5: ~$2.75/month
+- GPT-5 Mini: ~$0.55/month
+- GPT-5 Nano: ~$0.11/month
+- GPT-4o: ~$8.00/month
 - GPT-4 Turbo: ~$14.50/month
-- GPT-3.5 Turbo: ~$0.50/month
+- GPT-3.5 Turbo: ~$0.73/month
 
 ### Cost Optimization Tips
 
 1. **Choose the Right Model**:
-   - GPT-4o: Best balance of quality and cost (recommended)
-   - GPT-4 Turbo: Highest quality, highest cost
-   - GPT-3.5 Turbo: Most economical, good for simple responses
+   - GPT-5: Latest model with fast responses
+   - GPT-5 Mini: Good balance of speed and cost
+   - GPT-5 Nano: Most economical GPT-5 option
+   - GPT-4o: Best balance of quality and cost for GPT-4 generation
+   - GPT-4 Turbo: Highest quality GPT-4, highest cost
+   - GPT-3.5 Turbo: Most economical overall, good for simple responses
 
 2. **Optimize Token Usage**:
    - Set appropriate max_tokens limits (500-1000 for most responses)
@@ -152,7 +174,7 @@ Based on OpenAI's current pricing (as of 2025) and assuming an average conversat
    - No configuration needed - works automatically with GPT-4o and newer models
    - See "Prompt Caching" section below for details
 
-*Note: Prices are subject to change. Check [OpenAI's pricing page](https://openai.com/pricing) for current rates.*
+*Pricing is subject to change; figures based on [OpenAI's 2025 pricing documentation](https://openai.com/api/pricing/).*
 
 ### Documentation Integration
 
@@ -509,6 +531,20 @@ Contributions are welcome! Please feel free to submit issues, feature requests, 
 3. Test thoroughly in a FreeScout environment
 4. Submit a pull request with detailed description
 
+### GPT-5 Integration Tuning
+
+- File: `gpt5.js` contains all GPT-5 Responses API behavior behind a small helper (`window.GPT5`).
+- Tweak these defaults to experiment without affecting legacy integrations:
+  - `reasoning.effort`: `'minimal' | 'low' | 'medium' | 'high'` (default: `'high'`)
+  - `response_format`: `'text'` (ensures visible assistant message output)
+  - `verbosity`: `'medium'`
+  - `max_output_tokens`: `null` (if set, caps reasoning + text together)
+  - `tool_choice`, `parallel_tool_calls`, `service_tier`, `store`, `stream`, `include`
+- The content script calls `GPT5.buildRequest(...)` and `GPT5.extractReply(...)`. You can also adjust at runtime via the DevTools console:
+  - `GPT5.setConfig({ 'reasoning.effort': 'medium' })`
+  - `GPT5.getConfig()`
+Note: The legacy response feedback UI has been removed to simplify the experience.
+
 ## 📄 License
 
 This project is open source. Please check the license file for details.
@@ -521,13 +557,16 @@ This project is open source. Please check the license file for details.
 
 ## 📝 Changelog
 
-### Version 2.0.1 (Latest)
+### Version 2.1.0 (Latest)
+- ✅ **NEW: GPT-5 Model Support** - Added support for GPT-5, GPT-5 Mini, and GPT-5 Nano models
+- ✅ **NEW: Responses API** - Integrated OpenAI's /v1/responses endpoint for GPT-5 models
 - ✅ **NEW: Help Scout Support** - Full compatibility with Help Scout platform
 - ✅ **NEW: Prompt Caching** - Automatic OpenAI prompt caching for 80% faster responses and 75% cost reduction
 - ✅ **FIXED: Duplicate Response Bug** - Fixed issue where responses were inserted twice in Help Scout
 - ✅ **IMPROVED: Documentation Parsing** - Better handling of large documentation files
+- ✅ **IMPROVED: Multi-Platform** - Works with both FreeScout and Help Scout
 - Enhanced error handling and debugging capabilities
-- Added comprehensive debug console commands
+- Maintains full backward compatibility with GPT-4 and GPT-3.5 models
 
 ### Version 2.0.0
 - Major rewrite for multi-platform support

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "GPT Assistant for FreeScout & Help Scout",
-  "version": "2.0.0",
-  "description": "Generate AI replies in FreeScout and Help Scout using GPT-4 with customizable documentation support.",
+  "version": "2.1.0",
+  "description": "Generate AI replies in FreeScout and Help Scout using OpenAI GPT models (GPT-5, GPT-4o, GPT-3.5) with documentation support.",
   "permissions": ["scripting", "activeTab", "storage"],
   "host_permissions": [
     "https://api.openai.com/",
@@ -35,6 +35,7 @@
         "adapters/freescoutAdapter.js",
         "adapters/helpscoutAdapter.js",
         "platformManager.js",
+        "gpt5.js",
         "content.js"
       ],
       "run_at": "document_idle"
@@ -48,7 +49,8 @@
         "adapters/platformAdapter.js",
         "adapters/freescoutAdapter.js",
         "adapters/helpscoutAdapter.js",
-        "platformManager.js"
+        "platformManager.js",
+        "gpt5.js"
       ],
       "matches": ["<all_urls>"]
     }

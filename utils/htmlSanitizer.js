@@ -91,18 +91,12 @@
   static removeDangerousPatterns(html) {
     let cleaned = html;
     
-static removeDangerousPatterns(html) {
-  let cleaned = html;
-  
-  this.DANGEROUS_PATTERNS.forEach(pattern => {
-    // Reset lastIndex to ensure consistent behavior
-    pattern.lastIndex = 0;
-    cleaned = cleaned.replace(pattern, '');
-  });
-  
-  return cleaned;
-}
-
+    this.DANGEROUS_PATTERNS.forEach(pattern => {
+      // Reset lastIndex to ensure consistent behavior
+      pattern.lastIndex = 0;
+      cleaned = cleaned.replace(pattern, '');
+    });
+    
     return cleaned;
   }
 

@@ -1,6 +1,7 @@
 /**
  * GPT Assistant for FreeScout & Help Scout
  * Content script that works with both platforms using platform abstraction
+ * Now with GPT-5 Responses API support
  */
 
 // Wait for all dependencies to be loaded
@@ -11,6 +12,15 @@
   const platformManager = window.platformManager;
   const HTMLSanitizer = window.HTMLSanitizer;
 
+// Check if extension context is valid
+function isExtensionContextValid() {
+  try {
+    return !!(chrome && chrome.runtime && chrome.runtime.id);
+  } catch (e) {
+    return false;
+  }
+}
+
 // Settings management with retry mechanism
 async function loadSettings(retryCount = 0) {
   const maxRetries = 3;
@@ -18,34 +28,39 @@ async function loadSettings(retryCount = 0) {
 
   return new Promise(async (resolve) => {
     try {
-      // Check if chrome.storage is available
-      if (!chrome?.storage?.local) {
+      // Check if extension context is valid
+      if (!isExtensionContextValid()) {
+        if (retryCount === 0) {
+          console.warn('GPT Assistant: Extension context is invalid. The extension may have been reloaded. Please refresh the page.');
+        }
+        
         if (retryCount < maxRetries) {
-          console.log(`Chrome storage not ready, retrying... (${retryCount + 1}/${maxRetries})`);
           await new Promise(r => setTimeout(r, retryDelay));
           return resolve(await loadSettings(retryCount + 1));
         }
 
-        console.warn('Chrome storage API not available after retries, using defaults');
+        // After retries, return defaults
         resolve({
           systemPrompt: '',
           docsUrl: '',
           openaiKey: '',
           openaiModel: 'gpt-5',
-          temperature: 1,
+          temperature: 0.7,
           maxTokens: 1000,
           keyboardShortcut: 'Ctrl+Shift+G'
         });
         return;
       }
 
-      chrome.storage.local.get(['systemPrompt', 'docsUrl', 'openaiKey', 'openaiModel', 'temperature', 'maxTokens', 'keyboardShortcut', 'enableFeedback'], (result) => {
+      chrome.storage.local.get([
+        'systemPrompt', 'docsUrl', 'openaiKey', 'openaiModel', 'temperature', 'maxTokens', 'keyboardShortcut', 'enableFeedback',
+        'gpt5ReasoningEffort', 'gpt5TextVerbosity', 'gpt5MaxOutputTokens', 'gpt5ServiceTier', 'gpt5ParallelToolCalls'
+      ], (result) => {
         if (chrome.runtime.lastError) {
-          console.error('Extension context error:', chrome.runtime.lastError);
+          console.warn('GPT Assistant: Runtime error loading settings:', chrome.runtime.lastError.message);
 
           // Retry if we haven't exceeded retry count
           if (retryCount < maxRetries) {
-            console.log(`Retrying due to runtime error... (${retryCount + 1}/${maxRetries})`);
             setTimeout(async () => {
               resolve(await loadSettings(retryCount + 1));
             }, retryDelay);
@@ -57,7 +72,7 @@ async function loadSettings(retryCount = 0) {
             docsUrl: '',
             openaiKey: '',
             openaiModel: 'gpt-5',
-            temperature: 1,
+            temperature: 0.7,
             maxTokens: 1000,
             keyboardShortcut: 'Ctrl+Shift+G'
           });
@@ -65,16 +80,15 @@ async function loadSettings(retryCount = 0) {
         }
         resolve({
           ...result,
-          temperature: result.temperature || 1,
+          temperature: result.temperature || 0.7,
           maxTokens: result.maxTokens || 1000
         });
       });
     } catch (error) {
-      console.error('Extension context invalidated:', error);
+      console.warn('GPT Assistant: Error loading settings:', error.message);
 
       // Retry if we haven't exceeded retry count
       if (retryCount < maxRetries) {
-        console.log(`Retrying after error... (${retryCount + 1}/${maxRetries})`);
         await new Promise(r => setTimeout(r, retryDelay));
         return resolve(await loadSettings(retryCount + 1));
       }
@@ -83,8 +97,8 @@ async function loadSettings(retryCount = 0) {
         systemPrompt: '',
         docsUrl: '',
         openaiKey: '',
-        openaiModel: 'gpt-4o',
-        temperature: 1,
+        openaiModel: 'gpt-5',
+        temperature: 0.7,
         maxTokens: 1000,
         keyboardShortcut: 'Ctrl+Shift+G'
       });
@@ -96,26 +110,32 @@ async function loadSettings(retryCount = 0) {
 async function loadDocs(url) {
   if (!url) return [];
 
+  // Check if extension context is valid
+  if (!isExtensionContextValid()) {
+    console.warn('GPT Assistant: Cannot load docs, extension context is invalid');
+    return [];
+  }
+
   return new Promise((resolve) => {
     try {
       chrome.runtime.sendMessage(
         { action: 'fetchDocs', url },
         (response) => {
           if (chrome.runtime.lastError) {
-            console.error('Extension context error in loadDocs:', chrome.runtime.lastError);
+            console.warn('GPT Assistant: Error loading docs:', chrome.runtime.lastError.message);
             resolve([]);
             return;
           }
           if (response && response.success) {
             resolve(response.docs);
           } else {
-            console.error('Error loading docs:', response?.error);
+            console.warn('GPT Assistant: Failed to load docs:', response?.error);
             resolve([]);
           }
         }
       );
     } catch (error) {
-      console.error('Extension context invalidated in loadDocs:', error);
+      console.warn('GPT Assistant: Exception loading docs:', error.message);
       resolve([]);
     }
   });
@@ -297,6 +317,12 @@ function handleFeedbackRating(rating, responseId, generatedResponse, container) 
 
 async function submitFeedback(responseId, rating, notes, generatedResponse) {
   try {
+    // Check if extension context is valid
+    if (!isExtensionContextValid()) {
+      console.warn('GPT Assistant: Cannot submit feedback, extension context is invalid');
+      return;
+    }
+
     // Get current context for feedback
     const threadMessages = await platformManager.extractThread();
     const customerInfo = await platformManager.extractCustomerInfo();
@@ -324,12 +350,18 @@ async function submitFeedback(responseId, rating, notes, generatedResponse) {
     analyzeFeedbackPatterns();
 
   } catch (error) {
-    console.error('Error submitting feedback:', error);
+    console.warn('GPT Assistant: Error submitting feedback:', error.message);
   }
 }
 
 async function analyzeFeedbackPatterns() {
   try {
+    // Check if extension context is valid
+    if (!isExtensionContextValid()) {
+      console.warn('GPT Assistant: Cannot analyze feedback, extension context is invalid');
+      return;
+    }
+
     // Get all feedback data
     const allData = await chrome.storage.local.get(null);
     const feedbackEntries = Object.entries(allData)
@@ -371,7 +403,7 @@ async function analyzeFeedbackPatterns() {
     console.log('Feedback analysis updated:', analysisData);
 
   } catch (error) {
-    console.error('Error analyzing feedback patterns:', error);
+    console.warn('GPT Assistant: Error analyzing feedback patterns:', error.message);
   }
 }
 
@@ -596,8 +628,19 @@ function extractExistingContext() {
 
 // Main AI generation function
 async function generateAIResponse(e) {
+  // Check if extension context is valid before proceeding
+  if (!isExtensionContextValid()) {
+    console.error('GPT Assistant: Extension context is invalid. Please refresh the page.');
+    const adapter = platformManager?.getAdapter();
+    if (adapter && adapter.showNotification) {
+      adapter.showNotification('Extension was reloaded. Please refresh this page.', 'error');
+    }
+    return;
+  }
+
   const settings = await loadSettings();
-  const { systemPrompt, docsUrl, openaiKey, openaiModel, temperature, maxTokens } = settings;
+  const { systemPrompt, docsUrl, openaiKey, openaiModel, temperature, maxTokens,
+          gpt5ReasoningEffort, gpt5TextVerbosity, gpt5MaxOutputTokens, gpt5ServiceTier, gpt5ParallelToolCalls } = settings;
 
   try {
     // Validate API key first
@@ -689,54 +732,74 @@ async function generateAIResponse(e) {
       });
     }
 
-    // Generate a prompt_cache_key based on static content for better cache routing
-    // Use a combination of model, system prompt hash, and docs URL
-    const generateCacheKey = () => {
-      // Create a simple hash of the system prompt for consistency
-      const promptHash = systemPrompt ?
-        systemPrompt.split('').reduce((a, b) => {
-          a = ((a << 5) - a) + b.charCodeAt(0);
-          return a & a;
-        }, 0).toString(36) : 'default';
-
-      // Include docs URL domain for cache key segmentation
-      let docsDomain = 'nodocs';
-      if (docsUrl) {
-        try {
-          docsDomain = new URL(docsUrl).hostname.replace(/\./g, '-');
-        } catch (e) {
-          // If URL is invalid, use a hash of the URL string
-          docsDomain = 'invalid-' + docsUrl.split('').reduce((a, b) => {
+    // Check if using GPT-5 models
+    const isGPT5 = openaiModel.startsWith('gpt-5');
+    
+    let requestBody;
+    let apiEndpoint;
+    
+    if (isGPT5 && window.GPT5) {
+      // GPT-5 uses the new /v1/responses API
+      apiEndpoint = "https://api.openai.com/v1/responses";
+      
+      // Build request via dedicated GPT-5 helper
+      const overrides = {
+        reasoningEffort: gpt5ReasoningEffort || 'high',
+        textVerbosity: gpt5TextVerbosity || 'medium',
+        parallelToolCalls: gpt5ParallelToolCalls !== false
+      };
+      if (typeof gpt5MaxOutputTokens === 'number') {
+        overrides.maxOutputTokens = gpt5MaxOutputTokens;
+      }
+      if (gpt5ServiceTier) {
+        overrides.serviceTier = gpt5ServiceTier;
+      }
+      
+      requestBody = window.GPT5.buildRequest({ 
+        model: openaiModel, 
+        input: messages, 
+        overrides 
+      });
+    } else {
+      // Legacy models use /v1/chat/completions
+      apiEndpoint = "https://api.openai.com/v1/chat/completions";
+      
+      // Generate a prompt_cache_key based on static content for better cache routing
+      const generateCacheKey = () => {
+        const promptHash = systemPrompt ?
+          systemPrompt.split('').reduce((a, b) => {
             a = ((a << 5) - a) + b.charCodeAt(0);
             return a & a;
-          }, 0).toString(36);
+          }, 0).toString(36) : 'default';
+
+        let docsDomain = 'nodocs';
+        if (docsUrl) {
+          try {
+            docsDomain = new URL(docsUrl).hostname.replace(/\./g, '-');
+          } catch (e) {
+            docsDomain = 'invalid-' + docsUrl.split('').reduce((a, b) => {
+              a = ((a << 5) - a) + b.charCodeAt(0);
+              return a & a;
+            }, 0).toString(36);
+          }
         }
-      }
 
-      // Combine into cache key (keep under 64 chars as recommended)
-      const cacheKey = `${openaiModel}-${promptHash}-${docsDomain}`.substring(0, 64);
-      return cacheKey;
-    };
+        const cacheKey = `${openaiModel}-${promptHash}-${docsDomain}`.substring(0, 64);
+        return cacheKey;
+      };
 
-    // Prepare request body with prompt caching optimization
-    const requestBody = {
-      model: openaiModel,
-      messages: messages,
-      temperature: temperature,
-      // Add prompt_cache_key for optimal cache routing
-      prompt_cache_key: generateCacheKey()
-    };
-
-    // GPT-5 Mini uses max_completion_tokens instead of max_tokens
-    if (openaiModel === 'gpt-5-mini' || openaiModel === 'gpt-5') {
-      requestBody.max_completion_tokens = maxTokens;
-    } else {
-      requestBody.max_tokens = maxTokens;
+      requestBody = {
+        model: openaiModel,
+        messages: messages,
+        temperature: temperature,
+        max_tokens: maxTokens,
+        prompt_cache_key: generateCacheKey()
+      };
     }
 
     // Create an AbortController for timeout
     const controller = new AbortController();
-    const timeoutMs = 60000; // 60 seconds timeout (increased from default)
+    const timeoutMs = 60000; // 60 seconds timeout
 
     const timeout = setTimeout(() => {
       controller.abort();
@@ -744,11 +807,11 @@ async function generateAIResponse(e) {
 
     try {
       // Make API call to OpenAI with timeout
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const res = await fetch(apiEndpoint, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${openaiKey.trim()}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json; charset=utf-8"
         },
         body: JSON.stringify(requestBody),
         signal: controller.signal
@@ -788,7 +851,7 @@ async function generateAIResponse(e) {
       if (!res.ok) {
         console.error('GPT Assistant: API Error Response:', data);
         let errorMessage = `API Error (${res.status}): `;
-        if (data.error) {
+        if (data && data.error) {
           errorMessage += data.error.message || data.error.type || 'Unknown error';
         } else {
           errorMessage += res.statusText || 'Request failed';
@@ -796,7 +859,14 @@ async function generateAIResponse(e) {
         throw new Error(errorMessage);
       }
 
-      const reply = data.choices?.[0]?.message?.content;
+      // Extract reply based on API type
+      let reply;
+      if (isGPT5 && window.GPT5) {
+        reply = window.GPT5.extractReply(data);
+      } else {
+        reply = data.choices?.[0]?.message?.content;
+      }
+      
       if (!reply) {
         // Don't throw error for empty response, just log and show gentle message
         console.warn('GPT Assistant: Empty response received from OpenAI API');
@@ -905,17 +975,18 @@ async function initializeExtension() {
   const maxApiChecks = 5;
   const apiCheckDelay = 200;
 
-  while (!chrome?.runtime?.id && apiCheckAttempts < maxApiChecks) {
-    console.log(`Waiting for Chrome APIs... (${apiCheckAttempts + 1}/${maxApiChecks})`);
+  while (!isExtensionContextValid() && apiCheckAttempts < maxApiChecks) {
+    console.log(`GPT Assistant: Waiting for extension context... (${apiCheckAttempts + 1}/${maxApiChecks})`);
     await new Promise(resolve => setTimeout(resolve, apiCheckDelay));
     apiCheckAttempts++;
   }
 
-  if (!chrome?.runtime?.id) {
-    console.warn('GPT Assistant: Chrome APIs not available, running in limited mode');
-  } else {
-    console.log('GPT Assistant: Chrome APIs available');
+  if (!isExtensionContextValid()) {
+    console.error('GPT Assistant: Extension context is not available. The extension may need to be reloaded or the page refreshed.');
+    return;
   }
+
+  console.log('GPT Assistant: Extension context is valid');
 
   // Initialize platform manager
   const initialized = await platformManager.initialize();

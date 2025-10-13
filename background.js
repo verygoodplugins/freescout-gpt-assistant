@@ -59,19 +59,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then(() => sendResponse({ success: true }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
-  } else if (request.action === 'deleteFeedbackEntry') {
-    deleteFeedbackEntry(request.entryId)
-      .then(() => sendResponse({ success: true }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true;
-  } else if (request.action === 'deleteOldFeedbackEntries') {
-    deleteOldFeedbackEntries(request.cutoffDate)
-      .then(deletedCount => sendResponse({ success: true, deletedCount }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    return true;
-  } else if (request.action === 'deleteNegativeFeedbackEntries') {
-    deleteNegativeFeedbackEntries()
-      .then(deletedCount => sendResponse({ success: true, deletedCount }))
+  } else if (request.action === 'fetchPageText') {
+    // Validate and clamp maxChars: min=256, max=8000, default=8000
+    const maxChars = Math.min(Math.max(Number(request.maxChars) || 8000, 256), 8000);
+    // Validate and clamp ttlMs: min=60000 (1 min), max=86400000 (24 hours), default=86400000
+    const ttlMs = Math.min(Math.max(Number(request.ttlMs) || 86400000, 60000), 86400000);
+    
+    fetchPageTextWithCache(request.url, maxChars, ttlMs)
+      .then(payload => sendResponse({ success: true, ...payload }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
@@ -281,189 +276,36 @@ async function fetchDocs(url) {
   }
 }
 
-// Feedback deletion functions
-async function deleteFeedbackEntry(entryId) {
+// Fetch and cache arbitrary HTML pages, return plain text and <title>
+async function fetchPageTextWithCache(url, maxChars, ttlMs) {
+  if (!url) throw new Error('No URL provided');
+  const cacheKey = `page_cache_${url}`;
+  const timeKey = `page_cache_ts_${url}`;
   try {
-    const storageKey = `feedback_${entryId}`;
-    await chrome.storage.local.remove([storageKey]);
-    console.log('Deleted feedback entry:', entryId);
-    
-    // Reanalyze patterns after deletion
-    await reanalyzeFeedbackPatterns();
-  } catch (error) {
-    console.error('Error deleting feedback entry:', error);
-    throw error;
+    const stored = await chrome.storage.local.get([cacheKey, timeKey]);
+    const ts = stored[timeKey];
+    const now = Date.now();
+    if (stored[cacheKey] && ts && (now - ts) < ttlMs) {
+      return stored[cacheKey];
+    }
+
+    const resp = await fetch(url, { cache: 'no-cache' });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    let html = await resp.text();
+    // Extract <title>
+    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].trim() : '';
+    // Strip scripts/styles and tags
+    html = html.replace(/<script[\s\S]*?<\/script>/gi, '')
+               .replace(/<style[\s\S]*?<\/style>/gi, '');
+    const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, maxChars);
+    const payload = { url, title, text };
+    await chrome.storage.local.set({ [cacheKey]: payload, [timeKey]: now });
+    return payload;
+  } catch (e) {
+    console.error('Error fetching page text:', e);
+    throw e;
   }
 }
 
-async function deleteOldFeedbackEntries(cutoffDate) {
-  try {
-    const allData = await chrome.storage.local.get(null);
-    const feedbackKeys = Object.keys(allData).filter(key => key.startsWith('feedback_'));
-    const keysToDelete = [];
-    
-    for (const key of feedbackKeys) {
-      const entry = allData[key];
-      if (entry && entry.timestamp < cutoffDate) {
-        keysToDelete.push(key);
-      }
-    }
-    
-    if (keysToDelete.length > 0) {
-      await chrome.storage.local.remove(keysToDelete);
-      console.log('Deleted old feedback entries:', keysToDelete.length);
-      
-      // Reanalyze patterns after deletion
-      await reanalyzeFeedbackPatterns();
-    }
-    
-    return keysToDelete.length;
-  } catch (error) {
-    console.error('Error deleting old feedback entries:', error);
-    throw error;
-  }
-}
-
-async function deleteNegativeFeedbackEntries() {
-  try {
-    const allData = await chrome.storage.local.get(null);
-    const feedbackKeys = Object.keys(allData).filter(key => key.startsWith('feedback_'));
-    const keysToDelete = [];
-    
-    for (const key of feedbackKeys) {
-      const entry = allData[key];
-      if (entry && entry.rating === 'negative') {
-        keysToDelete.push(key);
-      }
-    }
-    
-    if (keysToDelete.length > 0) {
-      await chrome.storage.local.remove(keysToDelete);
-      console.log('Deleted negative feedback entries:', keysToDelete.length);
-      
-      // Reanalyze patterns after deletion
-      await reanalyzeFeedbackPatterns();
-    }
-    
-    return keysToDelete.length;
-  } catch (error) {
-    console.error('Error deleting negative feedback entries:', error);
-    throw error;
-  }
-}
-
-async function reanalyzeFeedbackPatterns() {
-  try {
-    // Get remaining feedback data
-    const allData = await chrome.storage.local.get(null);
-    const feedbackEntries = Object.entries(allData)
-      .filter(([key]) => key.startsWith('feedback_'))
-      .map(([key, value]) => value)
-      .sort((a, b) => b.timestamp - a.timestamp);
-    
-    if (feedbackEntries.length < 5) {
-      // Remove analysis if not enough data
-      await chrome.storage.local.remove(['feedbackAnalysis']);
-      return;
-    }
-    
-    // Analyze recent feedback (last 30 days)
-    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
-    const recentFeedback = feedbackEntries.filter(f => f.timestamp > thirtyDaysAgo);
-    
-    if (recentFeedback.length === 0) {
-      await chrome.storage.local.remove(['feedbackAnalysis']);
-      return;
-    }
-    
-    // Calculate metrics
-    const positiveCount = recentFeedback.filter(f => f.rating === 'positive').length;
-    const negativeCount = recentFeedback.filter(f => f.rating === 'negative').length;
-    const successRate = positiveCount / (positiveCount + negativeCount);
-    
-    // Extract common issues from negative feedback
-    const negativeNotes = recentFeedback
-      .filter(f => f.rating === 'negative' && f.notes)
-      .map(f => f.notes.toLowerCase());
-    
-    const commonIssues = extractCommonIssues(negativeNotes);
-    
-    // Store updated analysis
-    const analysisData = {
-      timestamp: Date.now(),
-      totalFeedback: recentFeedback.length,
-      successRate: successRate,
-      commonIssues: commonIssues,
-      suggestions: generateSuggestions(commonIssues, successRate)
-    };
-    
-    await chrome.storage.local.set({feedbackAnalysis: analysisData});
-    console.log('Feedback analysis updated after deletion');
-    
-  } catch (error) {
-    console.error('Error reanalyzing feedback patterns:', error);
-  }
-}
-
-function extractCommonIssues(negativeNotes) {
-  const issuePatterns = {
-    'too_formal': ['too formal', 'stiff', 'robotic', 'cold'],
-    'too_casual': ['too casual', 'unprofessional', 'informal'],
-    'missing_context': ['missing context', 'generic', 'not specific', 'context'],
-    'too_long': ['too long', 'verbose', 'wordy', 'lengthy'],
-    'too_short': ['too short', 'brief', 'not enough detail', 'incomplete'],
-    'wrong_tone': ['wrong tone', 'tone', 'attitude'],
-    'technical_errors': ['wrong information', 'incorrect', 'error', 'mistake'],
-    'missing_greeting': ['no greeting', 'abrupt', 'starts too quickly'],
-    'missing_signature': ['no signature', 'no sign-off', 'no closing']
-  };
-  
-  const issues = {};
-  
-  negativeNotes.forEach(note => {
-    Object.entries(issuePatterns).forEach(([issue, patterns]) => {
-      if (patterns.some(pattern => note.includes(pattern))) {
-        issues[issue] = (issues[issue] || 0) + 1;
-      }
-    });
-  });
-  
-  // Return issues sorted by frequency
-  return Object.entries(issues)
-    .sort(([,a], [,b]) => b - a)
-    .slice(0, 5) // Top 5 issues
-    .map(([issue, count]) => ({issue, count}));
-}
-
-function generateSuggestions(commonIssues, successRate) {
-  const suggestions = [];
-  
-  if (successRate < 0.7) {
-    suggestions.push('Consider reviewing and adjusting your system prompt for better response quality.');
-  }
-  
-  commonIssues.forEach(({issue, count}) => {
-    switch(issue) {
-      case 'too_formal':
-        suggestions.push('Try adding "Use a friendly, conversational tone" to your system prompt.');
-        break;
-      case 'too_casual':
-        suggestions.push('Consider adding "Maintain a professional tone" to your system prompt.');
-        break;
-      case 'missing_context':
-        suggestions.push('The AI might need more specific context. Try providing more details before generation.');
-        break;
-      case 'too_long':
-        suggestions.push('Consider reducing the max tokens setting or adding "Be concise" to your system prompt.');
-        break;
-      case 'too_short':
-        suggestions.push('Try increasing max tokens or adding "Provide detailed explanations" to your system prompt.');
-        break;
-      case 'wrong_tone':
-        suggestions.push('Review your system prompt tone instructions and previous message analysis.');
-        break;
-    }
-  });
-  
-  return suggestions.slice(0, 3); // Top 3 suggestions
-}
+// Feedback utilities removed

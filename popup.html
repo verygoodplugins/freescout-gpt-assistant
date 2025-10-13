@@ -16,14 +16,7 @@
         width: 100%;
         margin-bottom: 1em;
       }
-      .shortcut-help {
-        font-size: 0.8em;
-        color: #666;
-        margin-top: -0.5em;
-        margin-bottom: 1em;
-      }
-      .cache-section,
-      .feedback-section {
+      .cache-section {
         margin: 1em 0;
         padding: 0.5em;
         background: #f5f5f5;
@@ -54,42 +47,7 @@
       .btn-small:hover {
         background: #f8f9fa;
       }
-      .feedback-stats {
-        margin-bottom: 0.5em;
-      }
-      .feedback-stat {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.25em;
-        font-size: 0.9em;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          "Helvetica Neue", Arial, "Noto Color Emoji", "Apple Color Emoji",
-          "Segoe UI Emoji", sans-serif;
-      }
-      .suggestions {
-        margin-top: 0.5em;
-      }
-      .suggestions ul {
-        margin: 0.5em 0;
-        padding-left: 1.5em;
-        font-size: 0.85em;
-      }
-      .suggestions li {
-        margin-bottom: 0.25em;
-        color: #495057;
-      }
-      .link-button {
-        background: none;
-        border: none;
-        color: #007bff;
-        text-decoration: underline;
-        cursor: pointer;
-        font-size: 0.875rem;
-        padding: 0;
-      }
-      .link-button:hover {
-        color: #0056b3;
-      }
+      
     </style>
   </head>
   <body>
@@ -102,9 +60,10 @@
     <input type="password" id="openaiKey" /><br />
     <label>OpenAI Model</label><br />
     <select id="openaiModel">
-      <option value="gpt-5">GPT-5 (Recommended)</option>
+      <option value="gpt-5">GPT-5 (Latest - Responses API)</option>
       <option value="gpt-5-mini">GPT-5 Mini</option>
-      <option value="gpt-4o">GPT-4o</option>
+      <option value="gpt-5-nano">GPT-5 Nano</option>
+      <option value="gpt-4o">GPT-4o (Recommended for GPT-4)</option>
       <option value="gpt-4-turbo">GPT-4 Turbo</option>
       <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option></select
     ><br />
@@ -128,17 +87,11 @@
     /><br />
     <label>Keyboard Shortcut</label><br />
     <input type="text" id="keyboardShortcut" placeholder="Ctrl+Shift+G" /><br />
-    <div class="shortcut-help">
-      Format: Ctrl+Shift+G, Alt+Shift+A, etc. Use Cmd instead of Ctrl on Mac.
-    </div>
 
     <label>
       <input type="checkbox" id="enableFeedback" checked />
-      Enable response feedback system </label
-    ><br />
-    <div class="shortcut-help">
-      Show thumbs up/down buttons after AI responses for quality tracking.
-    </div>
+      Enable response feedback system
+    </label><br /><br />
 
     <div class="cache-section">
       <div class="cache-status" id="cacheStatus">Checking cache status...</div>
@@ -150,35 +103,35 @@
       </button>
     </div>
 
-    <div class="feedback-section">
-      <h3 style="margin: 0 0 0.5em 0; font-size: 1em">Response Feedback</h3>
-      <div id="feedbackStats" class="feedback-stats">
-        <div class="feedback-stat">
-          <span>Loading feedback data...</span>
-        </div>
-      </div>
-      <div id="feedbackSuggestions" class="suggestions" style="display: none">
-        <strong>Suggestions:</strong>
-        <ul id="suggestionsList"></ul>
-      </div>
-      <div style="margin-top: 0.5em">
-        <button type="button" id="viewFeedback" class="link-button">
-          View All Feedback Data
-        </button>
-        <br /><br />
-        <button type="button" id="clearOld30" class="btn-small">
-          Clear 30+ days old
-        </button>
-        <button type="button" id="clearOld90" class="btn-small">
-          Clear 90+ days old
-        </button>
-        <button type="button" id="clearNegative" class="btn-small">
-          Clear negative only
-        </button>
-        <button type="button" id="clearFeedback" class="btn-small">
-          Clear all feedback
-        </button>
-      </div>
+    <div class="cache-section">
+      <h3 style="margin: 0 0 0.5em 0; font-size: 1em">GPT-5 Settings</h3>
+      <label>Reasoning Effort</label><br />
+      <select id="gpt5ReasoningEffort">
+        <option value="minimal">Minimal</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select><br />
+      <label>Text Verbosity</label><br />
+      <select id="gpt5TextVerbosity">
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select><br />
+      <label>Max Output Tokens (optional)</label><br />
+      <input type="number" id="gpt5MaxOutputTokens" min="1" step="1" placeholder="none" /><br />
+      <label>Service Tier</label><br />
+      <select id="gpt5ServiceTier">
+        <option value="">Not set (project default)</option>
+        <option value="auto">auto</option>
+        <option value="default">default</option>
+        <option value="flex">flex</option>
+        <option value="priority">priority</option>
+      </select><br />
+      <label>
+        <input type="checkbox" id="gpt5ParallelToolCalls" checked />
+        Enable parallel tool calls
+      </label>
     </div>
 
     <button id="save">Save</button>
