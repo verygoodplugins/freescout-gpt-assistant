@@ -88,13 +88,13 @@ When used with the [WordPressFreeScout module](https://github.com/verygoodplugin
   - `0.1` = Very consistent, predictable responses
   - `0.7` = Balanced (default)
   - `0.9` = More creative, varied responses
-  - Note: For GPT‑5 via the Responses API, this setting is ignored.
+  - Note: For GPT-5 via the Responses API, this setting is ignored.
 
 - **Max Tokens**: Control response length (50-4000)
   - `500` = Short responses
   - `1000` = Medium responses (default)
   - `2000+` = Longer, detailed responses
-  - Note: For GPT‑5 via the Responses API, the extension ignores this setting to avoid capping combined reasoning+text tokens, which can suppress visible output. Legacy models still use it.
+  - Note: For GPT-5 via the Responses API, the extension ignores this setting to avoid capping combined reasoning+text tokens, which can suppress visible output. Legacy models still use it.
 
 - **Enable Feedback System**: Toggle response quality tracking
   - `Checked` = Show thumbs up/down buttons after responses (default)
@@ -529,9 +529,9 @@ Contributions are welcome! Please feel free to submit issues, feature requests, 
 3. Test thoroughly in a FreeScout environment
 4. Submit a pull request with detailed description
 
-### GPT‑5 Integration Tuning
+### GPT-5 Integration Tuning
 
-- File: `gpt5.js` contains all GPT‑5 Responses API behavior behind a small helper (`window.GPT5`).
+- File: `gpt5.js` contains all GPT-5 Responses API behavior behind a small helper (`window.GPT5`).
 - Tweak these defaults to experiment without affecting legacy integrations:
   - `reasoningEffort`: `'minimal' | 'low' | 'medium' | 'high'` (default: `'high'`)
   - `textFormat`: `'text'` (ensures visible assistant message output)
