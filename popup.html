@@ -66,7 +66,7 @@
     <input type="password" id="openaiKey" /><br />
     <label>OpenAI Model</label><br />
     <select id="openaiModel">
-      <option value="gpt-5">GPT-5 (Latest - Fast & Low Latency)</option>
+      <option value="gpt-5">GPT-5 (Latest - Responses API)</option>
       <option value="gpt-5-mini">GPT-5 Mini</option>
       <option value="gpt-5-nano">GPT-5 Nano</option>
       <option value="gpt-4o">GPT-4o (Recommended for GPT-4)</option>
@@ -97,10 +97,18 @@
       Format: Ctrl+Shift+G, Alt+Shift+A, etc. Use Cmd instead of Ctrl on Mac.
     </div>
 
+    <label>
+      <input type="checkbox" id="enableFeedback" checked />
+      Enable response feedback system
+    </label><br /><br />
+
     <div class="cache-section">
       <div class="cache-status" id="cacheStatus">Checking cache status...</div>
       <button type="button" id="clearCache" class="btn-small">
         Clear Documentation Cache
+      </button>
+      <button type="button" id="testFetch" class="btn-small">
+        Test Fetch Docs
       </button>
     </div>
 
