@@ -60,7 +60,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   } else if (request.action === 'fetchPageText') {
-    fetchPageTextWithCache(request.url, request.maxChars || 8000, request.ttlMs || (24*60*60*1000))
+    // Validate and clamp maxChars: min=256, max=8000, default=8000
+    const maxChars = Math.min(Math.max(Number(request.maxChars) || 8000, 256), 8000);
+    // Validate and clamp ttlMs: min=60000 (1 min), max=86400000 (24 hours), default=86400000
+    const ttlMs = Math.min(Math.max(Number(request.ttlMs) || 86400000, 60000), 86400000);
+    
+    fetchPageTextWithCache(request.url, maxChars, ttlMs)
       .then(payload => sendResponse({ success: true, ...payload }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
