@@ -5,7 +5,7 @@ A powerful Chrome extension that integrates OpenAI's GPT models with both FreeSc
 ## 🚀 Features
 
 ### Core AI Integration
-- **GPT-5 Support**: Latest GPT-5 family with Responses API (GPT-5, GPT-5 Mini, GPT-5 Nano)
+- **GPT-5 Support**: Latest GPT-5 family (GPT-5, GPT-5 Mini, GPT-5 Nano) - supports both Responses API and Chat Completions API
 - **GPT-4 Support**: Also supports GPT-4o, GPT-4 Turbo, and GPT-3.5 Turbo models
 - **Smart Context Building**: Automatically extracts conversation history and customer information
 - **Tone Matching**: Analyzes your previous responses to maintain consistent communication style
@@ -94,7 +94,7 @@ When used with the [WordPressFreeScout module](https://github.com/verygoodplugin
   - `500` = Short responses
   - `1000` = Medium responses (default)
   - `2000+` = Longer, detailed responses
-  - Note: For GPT-5 via the Responses API, the extension ignores this setting to avoid capping combined reasoning+text tokens, which can suppress visible output. Legacy models still use it.
+  - Note: For GPT-5 via the Responses API, `max_output_tokens` is the total token budget that includes both hidden reasoning tokens and visible output. The extension therefore overrides the legacy `max_tokens` setting to avoid truncating combined reasoning+output, which can suppress visible text. Legacy models (GPT-4, GPT-3.5) still use the `max_tokens` setting.
 
 - **Enable Feedback System**: Toggle response quality tracking
   - `Checked` = Show thumbs up/down buttons after responses (default)
@@ -113,38 +113,40 @@ Based on OpenAI's current pricing (as of 2025) and assuming an average conversat
 
 | Model | Input Cost | Output Cost | Total Cost per Response |
 |-------|------------|-------------|------------------------|
-| **GPT-5** | $0.002 per 1K tokens | $0.008 per 1K tokens | **~$0.006** |
-| **GPT-5 Mini** | $0.001 per 1K tokens | $0.004 per 1K tokens | **~$0.003** |
-| **GPT-5 Nano** | $0.0005 per 1K tokens | $0.002 per 1K tokens | **~$0.0015** |
-| **GPT-4o** | $0.0025 per 1K tokens | $0.01 per 1K tokens | **~$0.008** |
+| **GPT-5** | $0.00125 per 1K tokens | $0.01 per 1K tokens | **~$0.0055** |
+| **GPT-5 Mini** | $0.00025 per 1K tokens | $0.002 per 1K tokens | **~$0.0011** |
+| **GPT-5 Nano** | $0.00005 per 1K tokens | $0.00040 per 1K tokens | **~$0.00022** |
+| **GPT-4o** | $0.005 per 1K tokens | $0.02 per 1K tokens | **~$0.016** |
 | **GPT-4 Turbo** | $0.01 per 1K tokens | $0.03 per 1K tokens | **~$0.029** |
-| **GPT-3.5 Turbo** | $0.0005 per 1K tokens | $0.0015 per 1K tokens | **~$0.001** |
+| **GPT-3.5 Turbo** | $0.0005 per 1K tokens | $0.0015 per 1K tokens | **~$0.00145** |
+
+*Total cost calculated based on 2,000 input tokens + 300 output tokens per response.*
 
 ### Monthly Cost Examples
 
 **Light Usage** (50 responses/month):
-- GPT-5: ~$0.30/month
-- GPT-5 Mini: ~$0.15/month
-- GPT-5 Nano: ~$0.08/month
-- GPT-4o: ~$0.40/month
+- GPT-5: ~$0.28/month
+- GPT-5 Mini: ~$0.06/month
+- GPT-5 Nano: ~$0.01/month
+- GPT-4o: ~$0.80/month
 - GPT-4 Turbo: ~$1.45/month
-- GPT-3.5 Turbo: ~$0.05/month
+- GPT-3.5 Turbo: ~$0.07/month
 
 **Medium Usage** (200 responses/month):
-- GPT-5: ~$1.20/month
-- GPT-5 Mini: ~$0.60/month
-- GPT-5 Nano: ~$0.30/month
-- GPT-4o: ~$1.60/month
+- GPT-5: ~$1.10/month
+- GPT-5 Mini: ~$0.22/month
+- GPT-5 Nano: ~$0.04/month
+- GPT-4o: ~$3.20/month
 - GPT-4 Turbo: ~$5.80/month
-- GPT-3.5 Turbo: ~$0.20/month
+- GPT-3.5 Turbo: ~$0.29/month
 
 **Heavy Usage** (500 responses/month):
-- GPT-5: ~$3.00/month
-- GPT-5 Mini: ~$1.50/month
-- GPT-5 Nano: ~$0.75/month
-- GPT-4o: ~$4.00/month
+- GPT-5: ~$2.75/month
+- GPT-5 Mini: ~$0.55/month
+- GPT-5 Nano: ~$0.11/month
+- GPT-4o: ~$8.00/month
 - GPT-4 Turbo: ~$14.50/month
-- GPT-3.5 Turbo: ~$0.50/month
+- GPT-3.5 Turbo: ~$0.73/month
 
 ### Cost Optimization Tips
 
@@ -172,7 +174,7 @@ Based on OpenAI's current pricing (as of 2025) and assuming an average conversat
    - No configuration needed - works automatically with GPT-4o and newer models
    - See "Prompt Caching" section below for details
 
-*Note: Prices are subject to change. Check [OpenAI's pricing page](https://openai.com/pricing) for current rates.*
+*Pricing is subject to change; figures based on [OpenAI's 2025 pricing documentation](https://openai.com/api/pricing/).*
 
 ### Documentation Integration
 
@@ -533,13 +535,13 @@ Contributions are welcome! Please feel free to submit issues, feature requests, 
 
 - File: `gpt5.js` contains all GPT-5 Responses API behavior behind a small helper (`window.GPT5`).
 - Tweak these defaults to experiment without affecting legacy integrations:
-  - `reasoningEffort`: `'minimal' | 'low' | 'medium' | 'high'` (default: `'high'`)
-  - `textFormat`: `'text'` (ensures visible assistant message output)
-  - `textVerbosity`: `'medium'`
-  - `maxOutputTokens`: `null` (if set, caps reasoning + text together)
-  - `toolChoice`, `parallelToolCalls`, `serviceTier`, `store`, `stream`, `include`
+  - `reasoning.effort`: `'minimal' | 'low' | 'medium' | 'high'` (default: `'high'`)
+  - `response_format`: `'text'` (ensures visible assistant message output)
+  - `verbosity`: `'medium'`
+  - `max_output_tokens`: `null` (if set, caps reasoning + text together)
+  - `tool_choice`, `parallel_tool_calls`, `service_tier`, `store`, `stream`, `include`
 - The content script calls `GPT5.buildRequest(...)` and `GPT5.extractReply(...)`. You can also adjust at runtime via the DevTools console:
-  - `GPT5.setConfig({ reasoningEffort: 'medium' })`
+  - `GPT5.setConfig({ 'reasoning.effort': 'medium' })`
   - `GPT5.getConfig()`
 Note: The legacy response feedback UI has been removed to simplify the experience.
 
