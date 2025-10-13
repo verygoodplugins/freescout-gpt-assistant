@@ -96,8 +96,14 @@ async function loadFeedbackAnalytics() {
     const suggestionsElement = document.getElementById('feedbackSuggestions');
     const suggestionsList = document.getElementById('suggestionsList');
     
-    if (!statsElement) {
-      console.log('GPT Assistant: Feedback analytics elements not found in HTML, skipping');
+    // Verify all required elements exist before proceeding
+    const missingElements = [];
+    if (!statsElement) missingElements.push('feedbackStats');
+    if (!suggestionsElement) missingElements.push('feedbackSuggestions');
+    if (!suggestionsList) missingElements.push('suggestionsList');
+    
+    if (missingElements.length > 0) {
+      console.log(`GPT Assistant: Missing feedback elements in HTML (${missingElements.join(', ')}), skipping analytics`);
       return;
     }
     
