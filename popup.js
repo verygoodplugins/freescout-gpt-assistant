@@ -91,6 +91,16 @@ function checkCacheStatus(docsUrl) {
 // Load and display feedback analytics
 async function loadFeedbackAnalytics() {
   try {
+    // Check if feedback elements exist in the HTML
+    const statsElement = document.getElementById('feedbackStats');
+    const suggestionsElement = document.getElementById('feedbackSuggestions');
+    const suggestionsList = document.getElementById('suggestionsList');
+    
+    if (!statsElement) {
+      console.log('GPT Assistant: Feedback analytics elements not found in HTML, skipping');
+      return;
+    }
+    
     const allData = await new Promise(resolve => {
       chrome.storage.local.get(null, resolve);
     });
@@ -100,10 +110,6 @@ async function loadFeedbackAnalytics() {
       .filter(([key]) => key.startsWith('feedback_'))
       .map(([key, value]) => value)
       .sort((a, b) => b.timestamp - a.timestamp);
-
-    const statsElement = document.getElementById('feedbackStats');
-    const suggestionsElement = document.getElementById('feedbackSuggestions');
-    const suggestionsList = document.getElementById('suggestionsList');
 
     if (feedbackEntries.length === 0) {
       statsElement.innerHTML = '<div class="feedback-stat"><span>No feedback data yet</span></div>';
@@ -154,13 +160,17 @@ async function loadFeedbackAnalytics() {
 
   } catch (error) {
     console.error('Error loading feedback analytics:', error);
-    document.getElementById('feedbackStats').innerHTML =
-      '<div class="feedback-stat"><span>Error loading feedback data</span></div>';
+    const statsElement = document.getElementById('feedbackStats');
+    if (statsElement) {
+      statsElement.innerHTML = '<div class="feedback-stat"><span>Error loading feedback data</span></div>';
+    }
   }
 }
 
 // View feedback data in a new tab
-document.getElementById('viewFeedback').addEventListener('click', async () => {
+const viewFeedbackBtn = document.getElementById('viewFeedback');
+if (viewFeedbackBtn) {
+  viewFeedbackBtn.addEventListener('click', async () => {
   try {
     const allData = await new Promise(resolve => {
       chrome.storage.local.get(null, resolve);
@@ -185,7 +195,8 @@ document.getElementById('viewFeedback').addEventListener('click', async () => {
     console.error('Error viewing feedback:', error);
     alert('Error loading feedback data');
   }
-});
+  });
+}
 
 // Generate HTML report for feedback data
 function generateFeedbackReportHTML(feedbackEntries, analysisData) {
@@ -327,7 +338,9 @@ function generateFeedbackReportHTML(feedbackEntries, analysisData) {
 }
 
 // Clear old feedback (30 days)
-document.getElementById('clearOld30').addEventListener('click', async () => {
+const clearOld30Btn = document.getElementById('clearOld30');
+if (clearOld30Btn) {
+  clearOld30Btn.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear feedback entries older than 30 days?')) {
     try {
       const response = await new Promise(resolve => {
@@ -348,10 +361,13 @@ document.getElementById('clearOld30').addEventListener('click', async () => {
       alert('Error clearing old feedback entries.');
     }
   }
-});
+  });
+}
 
 // Clear old feedback (90 days)
-document.getElementById('clearOld90').addEventListener('click', async () => {
+const clearOld90Btn = document.getElementById('clearOld90');
+if (clearOld90Btn) {
+  clearOld90Btn.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear feedback entries older than 90 days?')) {
     try {
       const response = await new Promise(resolve => {
@@ -372,10 +388,13 @@ document.getElementById('clearOld90').addEventListener('click', async () => {
       alert('Error clearing old feedback entries.');
     }
   }
-});
+  });
+}
 
 // Clear negative feedback
-document.getElementById('clearNegative').addEventListener('click', async () => {
+const clearNegativeBtn = document.getElementById('clearNegative');
+if (clearNegativeBtn) {
+  clearNegativeBtn.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear all negative feedback entries?')) {
     try {
       const response = await new Promise(resolve => {
@@ -395,10 +414,13 @@ document.getElementById('clearNegative').addEventListener('click', async () => {
       alert('Error clearing negative feedback entries.');
     }
   }
-});
+  });
+}
 
 // Clear all feedback data
-document.getElementById('clearFeedback').addEventListener('click', async () => {
+const clearFeedbackBtn = document.getElementById('clearFeedback');
+if (clearFeedbackBtn) {
+  clearFeedbackBtn.addEventListener('click', async () => {
   if (confirm('Are you sure you want to clear all feedback data? This cannot be undone.')) {
     try {
       const allData = await new Promise(resolve => {
@@ -427,8 +449,8 @@ document.getElementById('clearFeedback').addEventListener('click', async () => {
       alert('Error clearing feedback data.');
     }
   }
-});
->>>>>>> main
+  });
+}
 
 // Clear cache button handler
 document.getElementById('clearCache').onclick = () => {
@@ -526,6 +548,11 @@ document.getElementById('save').onclick = () => {
     systemPrompt, docsUrl, openaiKey, openaiModel, temperature, maxTokens, keyboardShortcut, enableFeedback,
     gpt5ReasoningEffort, gpt5TextVerbosity, gpt5MaxOutputTokens, gpt5ServiceTier, gpt5ParallelToolCalls
   }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('GPT Assistant: Error saving settings:', chrome.runtime.lastError);
+      alert('Error saving settings: ' + chrome.runtime.lastError.message);
+      return;
+    }
     // Clear docs cache when settings are saved
     chrome.runtime.sendMessage({ action: 'clearDocsCache' }, (response) => {
       if (response && response.success) {

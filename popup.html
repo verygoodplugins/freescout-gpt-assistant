@@ -21,6 +21,13 @@
         color: #666;
         margin-top: -0.5em;
         margin-bottom: 1em;
+        padding: 0.5em;
+        background: #fff9e6;
+        border: 1px solid #ffc107;
+        border-radius: 4px;
+      }
+      .shortcut-help strong {
+        color: #ff6b00;
       }
       .cache-section {
         margin: 1em 0;
@@ -94,7 +101,9 @@
     <label>Keyboard Shortcut</label><br />
     <input type="text" id="keyboardShortcut" placeholder="Ctrl+Shift+G" /><br />
     <div class="shortcut-help">
-      Format: Ctrl+Shift+G, Alt+Shift+A, etc. Use Cmd instead of Ctrl on Mac.
+      <strong>⚠️ Note for Mac users:</strong> Cmd+Shift+G conflicts with Chrome's "Find Previous". 
+      Please use a different shortcut like <strong>Cmd+Shift+A</strong> or <strong>Cmd+Shift+R</strong>.<br>
+      Format: Cmd+Shift+A (Mac), Ctrl+Shift+G (Windows), Alt+Shift+G, etc.
     </div>
 
     <label>
